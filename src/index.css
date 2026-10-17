@@ -1,0 +1,21 @@
+:root {
+  --ink: #29322c;
+  --body: 'DM Sans', 'Avenir Next', sans-serif;
+  --display: 'Manrope', 'Avenir Next', sans-serif;
+  --line: #e7eae4;
+  font-family: var(--body);
+  font-size: 14px;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--ink);
+  background: #f8f9f6;
+}
+
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+button,input,select { font: inherit; }
+button:focus-visible,input:focus-visible,select:focus-visible { outline: 2px solid #769173; outline-offset: 2px; }
+::selection { color: #26382a; background: #dce9d7; }
+#root { min-height: 100vh; }
