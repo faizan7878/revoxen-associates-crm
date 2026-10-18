@@ -4,9 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "npm run dev",
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch src/server/index.ts",
     "dev:web": "vite",
+    "reset-password": "tsx src/server/reset-password.ts",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
