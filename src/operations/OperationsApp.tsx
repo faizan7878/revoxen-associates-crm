@@ -285,12 +285,6 @@ function OperationsApp() {
     <aside className={`ops-sidebar ${mobileNav ? 'ops-sidebar-open' : ''}`}>
       <div className="ops-brand"><span className="ops-brand-mark">R<span /></span><span className="ops-brand-name">REVOXEN<small>ASSOCIATES · OPERATIONS</small></span><button className="ops-icon-button ops-mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={17} /></button></div>
       <div className="ops-company"><span className="ops-company-mark">RA</span><span><strong>Revoxen Associates</strong><small>PKR · Pakistan</small></span><ChevronDown size={14} /></div>
-      <div style={{ padding: '4px 14px 10px 14px' }}>
-        <a href="/" className="ops-nav-link" style={{ textDecoration: 'none', background: 'rgba(255,255,255,0.06)', borderRadius: '6px' }}>
-          <LayoutDashboard size={15} strokeWidth={1.8} />
-          <span>← CRM Dashboard</span>
-        </a>
-      </div>
       <nav className="ops-nav" aria-label="Company modules">{navGroups.map((group) => {
         const links = group.links.filter(({ id }) => canView(id))
         return links.length ? <div className="ops-nav-group" key={group.title}><span className="ops-nav-title">{group.title}</span>{links.map(({ id, label, icon: Icon }) => <button key={id} className={`ops-nav-link ${module === id ? 'ops-nav-active' : ''}`} onClick={() => changeModule(id)}><Icon size={16} strokeWidth={1.8} /><span>{label}</span>{id === 'invoices' && finance && finance.receivables > 0 && <i className="ops-nav-dot" />}</button>)}</div> : null
