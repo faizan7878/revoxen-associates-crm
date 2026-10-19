@@ -41,3 +41,4 @@ Dimensional billing multiplies entered non-zero dimensions, quantity, nos, and u
 ## Production boundary
 
 This local version has persistent SQLite storage but no user accounts, role permissions, remote backup, multi-device hosting, payment gateway, or document attachment storage. It listens on localhost for development. Do not expose it to the public internet or use it as the sole statutory payroll/tax record until authentication, backups, access controls, and jurisdiction-specific accounting review are added.
+<!-- vercel redeploy -->
