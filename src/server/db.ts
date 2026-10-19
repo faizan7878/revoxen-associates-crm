@@ -187,6 +187,8 @@ export function openDatabase(filename = resolve('data/revoxen.sqlite')): Db {
   ensureColumn(db, 'projects', 'lead_source', "TEXT NOT NULL DEFAULT 'Website Enquiries'")
   ensureColumn(db, 'projects', 'lead_id', 'INTEGER REFERENCES leads(id) ON DELETE SET NULL')
   ensureColumn(db, 'expenses', 'paid_amount', 'REAL NOT NULL DEFAULT 0')
+  ensureColumn(db, 'users', 'google_id', "TEXT NOT NULL DEFAULT ''")
+
   if (filename !== ':memory:') {
     seedLeadsIfEmpty(db)
   }

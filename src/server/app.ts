@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { OAuth2Client } from 'google-auth-library'
 import type { Db } from './db.js'
 import { calculateDocument, calculatePayroll } from './db.js'
 import { allPermissions, createSession, getSessionUser, hashPassword, normalizePermissions, permissionModules, tokenHash, verifyPassword, type AuthUser, type PermissionModule, type Permissions } from './auth.js'
@@ -46,6 +47,61 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const user = currentUser(request, db)
     if (!user) throw new HttpError(401, 'Sign in to continue.')
     response.json(user)
+  })
+
+  // --- Google OAuth 2.0 ---
+  app.get('/api/auth/google/url', (_request, response) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI
+    if (!clientId || !redirectUri) throw new HttpError(503, 'Google Sign-In is not configured on this server.')
+    const client = new OAuth2Client(clientId)
+    const url = client.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['openid', 'email', 'profile'],
+      redirect_uri: redirectUri,
+      prompt: 'select_account',
+    })
+    response.json({ url })
+  })
+
+  app.post('/api/auth/google/callback', async (request, response) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI
+    if (!clientId || !clientSecret || !redirectUri) throw new HttpError(503, 'Google Sign-In is not configured on this server.')
+    const body = objectBody(request)
+    const code = typeof body.code === 'string' ? body.code : ''
+    if (!code) throw new HttpError(400, 'Authorization code is required.')
+    const client = new OAuth2Client(clientId, clientSecret, redirectUri)
+    let googleId: string, googleEmail: string, googleName: string
+    try {
+      const { tokens } = await client.getToken(code)
+      const ticket = await client.verifyIdToken({ idToken: tokens.id_token!, audience: clientId })
+      const payload = ticket.getPayload()!
+      googleId = payload.sub
+      googleEmail = (payload.email ?? '').toLowerCase()
+      googleName = payload.name ?? googleEmail
+    } catch {
+      throw new HttpError(401, 'Google sign-in failed. Please try again.')
+    }
+    if (!googleEmail) throw new HttpError(401, 'Could not retrieve email from Google account.')
+    // Find existing user by google_id or email
+    let user = db.prepare('SELECT id,active FROM users WHERE google_id=?').get(googleId) as { id: number; active: number } | undefined
+    if (!user) user = db.prepare('SELECT id,active FROM users WHERE email=?').get(googleEmail) as { id: number; active: number } | undefined
+    if (user) {
+      if (!user.active) throw new HttpError(403, 'Your account has been disabled. Contact your administrator.')
+      // Link google_id if not already linked
+      db.prepare('UPDATE users SET google_id=? WHERE id=? AND (google_id IS NULL OR google_id="")').run(googleId, user.id)
+      return sendSession(db, user.id, response)
+    }
+    // Auto-create account if no users exist yet (first user = admin)
+    const totalUsers = Number((db.prepare('SELECT COUNT(*) AS count FROM users').get() as Row).count)
+    if (totalUsers === 0) {
+      const result = db.prepare("INSERT INTO users (name,email,password_hash,role,permissions,google_id) VALUES (?,?,?,'admin',?,?)")
+        .run(googleName, googleEmail, '', JSON.stringify(allPermissions()), googleId)
+      return sendSession(db, Number(result.lastInsertRowid), response)
+    }
+    throw new HttpError(403, 'No account found for this Google email. Ask your Revoxen administrator to create an account for you.')
   })
 
   if (options.authentication !== false) app.use('/api', (request, response, next) => {
