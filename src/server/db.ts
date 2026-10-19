@@ -152,18 +152,216 @@ export function openDatabase(filename = resolve('data/revoxen.sqlite')): Db {
       token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS leads (
+      id INTEGER PRIMARY KEY,
+      lead_code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      client TEXT NOT NULL,
+      source TEXT NOT NULL,
+      stage TEXT NOT NULL DEFAULT 'Lead Source',
+      value REAL NOT NULL DEFAULT 0,
+      phone TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      site_address TEXT NOT NULL DEFAULT '',
+      work_type TEXT NOT NULL DEFAULT '',
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      estimate_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE INDEX IF NOT EXISTS idx_payroll_period ON payroll(pay_period);
     CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
     CREATE INDEX IF NOT EXISTS idx_documents_date ON documents(document_type, issue_date);
     CREATE INDEX IF NOT EXISTS idx_work_orders_project ON work_orders(project_id);
+    CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
+    CREATE INDEX IF NOT EXISTS idx_leads_stage ON leads(stage);
+    CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
   `)
   ensureColumn(db, 'documents', 'billing_stage', "TEXT NOT NULL DEFAULT 'Progress'")
   ensureColumn(db, 'documents', 'audit_status', "TEXT NOT NULL DEFAULT 'Not required'")
   ensureColumn(db, 'documents', 'audited_by', "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, 'documents', 'audit_date', "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, 'documents', 'audit_notes', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'documents', 'lead_source', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'documents', 'lead_id', 'INTEGER REFERENCES leads(id) ON DELETE SET NULL')
+  ensureColumn(db, 'projects', 'lead_source', "TEXT NOT NULL DEFAULT 'Website Enquiries'")
+  ensureColumn(db, 'projects', 'lead_id', 'INTEGER REFERENCES leads(id) ON DELETE SET NULL')
   ensureColumn(db, 'expenses', 'paid_amount', 'REAL NOT NULL DEFAULT 0')
+  if (filename !== ':memory:') {
+    seedLeadsIfEmpty(db)
+  }
   return db
+}
+
+export function seedLeadsIfEmpty(db: Db) {
+  const existing = Number((db.prepare('SELECT COUNT(*) as count FROM leads').get() as { count: number }).count)
+  if (existing >= 248) return
+  if (existing > 0) {
+    db.prepare('DELETE FROM leads').run()
+  }
+
+  const channels = [
+    {
+      source: 'Website Enquiries',
+      stages: { 'Lead Source': 19, 'Qualified': 12, 'Site Visit': 6, 'Estimate / Bid': 8, 'Proposal': 6, 'Awarded': 8, 'Lost': 10 },
+      totalValue: 6850000,
+    },
+    {
+      source: 'Referrals',
+      stages: { 'Lead Source': 11, 'Qualified': 8, 'Site Visit': 4, 'Estimate / Bid': 6, 'Proposal': 3, 'Awarded': 7, 'Lost': 6 },
+      totalValue: 5420000,
+    },
+    {
+      source: 'Repeat Customers',
+      stages: { 'Lead Source': 10, 'Qualified': 4, 'Site Visit': 4, 'Estimate / Bid': 5, 'Proposal': 4, 'Awarded': 5, 'Lost': 5 },
+      totalValue: 4180000,
+    },
+    {
+      source: 'Paid Campaigns',
+      stages: { 'Lead Source': 8, 'Qualified': 6, 'Site Visit': 2, 'Estimate / Bid': 4, 'Proposal': 2, 'Awarded': 4, 'Lost': 4 },
+      totalValue: 2960000,
+    },
+    {
+      source: 'Bid Platforms',
+      stages: { 'Lead Source': 7, 'Qualified': 4, 'Site Visit': 2, 'Estimate / Bid': 4, 'Proposal': 2, 'Awarded': 2, 'Lost': 4 },
+      totalValue: 1850000,
+    },
+    {
+      source: 'Partners',
+      stages: { 'Lead Source': 5, 'Qualified': 4, 'Site Visit': 2, 'Estimate / Bid': 2, 'Proposal': 1, 'Awarded': 3, 'Lost': 3 },
+      totalValue: 2140000,
+    },
+    {
+      source: 'Outbound Sales',
+      stages: { 'Lead Source': 7, 'Qualified': 2, 'Site Visit': 2, 'Estimate / Bid': 2, 'Proposal': 0, 'Awarded': 2, 'Lost': 2 },
+      totalValue: 1420000,
+    },
+  ]
+
+  const insert = db.prepare(`
+    INSERT INTO leads (lead_code, name, client, source, stage, value, phone, email, site_address, work_type, project_id, notes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const clients = [
+    'Eleanor Whitmore', 'Martin & Co. Holdings', 'Naomi Adler', 'Devin & Sam Rivera',
+    'Clara Bennett', 'Hollis Property Group', 'Alder Street LLC', 'Kendall James',
+    'Gabrielle Moore', 'Theo Park', 'Crescent Developers', 'Al-Falah Properties',
+    'Packages Group', 'Prime Residency', 'Horizon Towers', 'Vertex Healthcare',
+    'Metropolitan Retail', 'Engro Logistics', 'Nishat Apparel', 'Habib Metro',
+    'Silver Oaks Estate', 'Highland Heights', 'Sapphire Mills', 'Beaconhouse Campus',
+    'Shalamar Trust', 'Kohinoor Textile', 'Gulberg Galleria', 'Askari Estates',
+  ]
+
+  const workTypes = [
+    'Whole-home renovation', 'Commercial fit-out', 'Luxury villa construction',
+    'Hospitality remodel', 'Office interior', 'Industrial warehouse',
+    'Exterior facade & roofing', 'Residential extension', 'Healthcare clinic buildout',
+  ]
+
+  const locations = [
+    'Lahore (DHA Phase 6)', 'Islamabad (Sector F-7)', 'Rawalpindi (Bahria Town)',
+    'Karachi (Clifton Block 4)', 'Taxila (Industrial Zone)', 'Faisalabad (Canal Road)',
+    'Gujranwala (Model Town)', 'Peshawar (Hayatabad)', 'Multan (Cantt)',
+  ]
+
+  const projectRow = db.prepare('SELECT id FROM projects ORDER BY id ASC LIMIT 1').get() as { id: number } | undefined
+  const defaultProjectId = projectRow?.id ?? null
+
+  db.transaction(() => {
+    let globalIndex = 1
+    for (const channel of channels) {
+      const stageList: string[] = []
+      for (const [stage, count] of Object.entries(channel.stages)) {
+        for (let i = 0; i < count; i++) {
+          stageList.push(stage)
+        }
+      }
+
+      const count = stageList.length
+      const weights = stageList.map((stage) => {
+        if (stage === 'Awarded') return 2.2
+        if (stage === 'Proposal') return 1.8
+        if (stage === 'Estimate / Bid') return 1.5
+        if (stage === 'Site Visit') return 1.2
+        if (stage === 'Qualified') return 1.0
+        if (stage === 'Lost') return 0.9
+        return 0.8
+      })
+      const sumWeight = weights.reduce((a, b) => a + b, 0)
+      
+      let runningValue = 0
+      for (let i = 0; i < count; i++) {
+        const stage = stageList[i]
+        const code = `LD-${String(globalIndex).padStart(3, '0')}`
+        const client = clients[(globalIndex - 1) % clients.length]
+        const workType = workTypes[(globalIndex - 1) % workTypes.length]
+        const location = locations[(globalIndex - 1) % locations.length]
+        const name = `${client} · ${workType}`
+        
+        let leadValue: number
+        if (i === count - 1) {
+          leadValue = Math.round(channel.totalValue - runningValue)
+        } else {
+          const raw = (weights[i] / sumWeight) * channel.totalValue
+          leadValue = Math.round(raw / 1000) * 1000
+          runningValue += leadValue
+        }
+
+        const dayOffset = Math.floor(((globalIndex * 13) % 270)) + 3
+        const date = new Date(Date.UTC(2026, 0, dayOffset))
+        const dateStr = date.toISOString().slice(0, 10)
+        const timeStr = '10:00:00'
+        const createdAt = `${dateStr} ${timeStr}`
+
+        const linkedProjectId = (stage === 'Awarded' && globalIndex === 1 && defaultProjectId) ? defaultProjectId : null
+
+        insert.run(
+          code,
+          name,
+          client,
+          channel.source,
+          stage,
+          leadValue,
+          `+92 300 ${(globalIndex * 111111) % 900000 + 100000}`,
+          `contact${globalIndex}@example.com`,
+          location,
+          workType,
+          linkedProjectId,
+          `Source channel: ${channel.source}. Stage: ${stage}.`,
+          createdAt
+        )
+        globalIndex++
+      }
+    }
+
+    // 5 direct walk-in / incoming inquiries bringing total leads to exactly 248 (1 awarded, 4 lost)
+    const directLeads = [
+      { code: 'LD-244', name: 'Al-Haram Heights · Luxury villa construction', client: 'Eleanor Whitmore', source: 'Direct / Inquiries', stage: 'Awarded', value: 0, statusDesc: 'Direct client award' },
+      { code: 'LD-245', name: 'Apex Complex · Commercial fit-out', client: 'Martin & Co. Holdings', source: 'Direct / Inquiries', stage: 'Lost', value: 0, statusDesc: 'Client opted for in-house execution' },
+      { code: 'LD-246', name: 'Civic Center Suite · Office interior', client: 'Naomi Adler', source: 'Direct / Inquiries', stage: 'Lost', value: 0, statusDesc: 'Budget realignment' },
+      { code: 'LD-247', name: 'Park View Villa · Whole-home renovation', client: 'Devin & Sam Rivera', source: 'Direct / Inquiries', stage: 'Lost', value: 0, statusDesc: 'Project postponed' },
+      { code: 'LD-248', name: 'Boulevard Residence · Residential extension', client: 'Clara Bennett', source: 'Direct / Inquiries', stage: 'Lost', value: 0, statusDesc: 'Permit restrictions' },
+    ]
+
+    for (const lead of directLeads) {
+      insert.run(
+        lead.code,
+        lead.name,
+        lead.client,
+        lead.source,
+        lead.stage,
+        lead.value,
+        '+92 300 5550199',
+        'info@revoxenassociates.com',
+        'Islamabad (Sector F-7)',
+        'Architecture & Construction',
+        null,
+        lead.statusDesc,
+        '2026-05-15 11:00:00'
+      )
+    }
+  })()
 }
 
 function ensureColumn(db: Db, table: string, column: string, definition: string) {

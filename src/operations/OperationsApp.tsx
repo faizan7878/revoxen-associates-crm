@@ -4,24 +4,25 @@ import {
   BriefcaseBusiness, CalendarDays, Check, CheckCircle2, ChevronDown,
   CircleDollarSign, ClipboardList, FileSpreadsheet,
   FileText, Filter, HardHat, LayoutDashboard, LogOut, Menu, Package, Plus, Receipt,
-  Search, ShieldCheck, UserCog, UsersRound, Wallet, Wrench, X, Briefcase, type LucideIcon,
+  Search, ShieldCheck, UserCog, UsersRound, Wallet, Wrench, X, Briefcase, Sparkles, PieChart as PieIcon, type LucideIcon,
 } from 'lucide-react'
 import AuthScreen from './AuthScreen'
+import LeadSourceTracking from './LeadSourceTracking'
 import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import './operations.css'
 
-type ModuleId = 'dashboard' | 'projects' | 'projectAccounts' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss' | 'users'
+type ModuleId = 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss' | 'users'
 type EntryModule = Exclude<ModuleId, 'dashboard' | 'projectAccounts' | 'payroll' | 'loans' | 'profitLoss' | 'users'>
 type AuthUser = { id: number; name: string; email: string; role: 'admin' | 'user'; permissions: Partial<Record<Exclude<ModuleId, 'users'>, { view: boolean; edit: boolean }>> }
 type Entry = Record<string, unknown>
-type Bootstrap = { projects: Entry[]; employees: Entry[]; employeeLoans: Entry[]; payroll: Entry[]; assets: Entry[]; assetMaintenance: Entry[]; vendors: Entry[]; workOrders: Entry[]; expenses: Entry[]; documents: Entry[] }
+type Bootstrap = { projects: Entry[]; leads: Entry[]; employees: Entry[]; employeeLoans: Entry[]; payroll: Entry[]; assets: Entry[]; assetMaintenance: Entry[]; vendors: Entry[]; workOrders: Entry[]; expenses: Entry[]; documents: Entry[] }
 type Finance = { period: { from: string; to: string }; currency: string; revenue: number; cashCollected: number; receivables: number; projectExpenses: number; generalExpenses: number; cashExpensePayments: number; payrollCost: number; payrollPaid: number; vendorPayments: number; depreciation: number; inputTax: number; outputTax: number; totalOperatingExpenses: number; profitOrLoss: number; cashNet: number; billedInPeriod: Entry[]; expenseByCategory: Entry[]; projectProfitability: Entry[] }
 type Field = { key: string; label: string; required?: boolean; kind?: 'text' | 'date' | 'month' | 'number' | 'email' | 'tel' | 'textarea' | 'select'; options?: { value: string; label: string }[]; min?: number; max?: number; step?: number; hint?: string }
 type LineItem = { item: string; description: string; length: string; width: string; height: string; quantity: string; nos: string; unit: string; rate: string; taxRate: string }
 
 const navGroups: { title: string; links: { id: ModuleId; label: string; icon: LucideIcon }[] }[] = [
-  { title: 'WORKSPACE', links: [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'projects', label: 'Projects', icon: BriefcaseBusiness }, { id: 'projectAccounts', label: 'Project accounts', icon: Briefcase }] },
+  { title: 'WORKSPACE', links: [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'leads', label: 'Leads & Pipeline', icon: Sparkles }, { id: 'projects', label: 'Projects', icon: BriefcaseBusiness }, { id: 'projectAccounts', label: 'Project accounts', icon: Briefcase }] },
   { title: 'PEOPLE', links: [{ id: 'employees', label: 'Employees', icon: UsersRound }, { id: 'payroll', label: 'Payroll', icon: Banknote }, { id: 'loans', label: 'Employee loans', icon: Wallet }] },
   { title: 'OPERATIONS', links: [{ id: 'assets', label: 'Company assets', icon: Package }, { id: 'vendors', label: 'Vendors', icon: HardHat }, { id: 'workOrders', label: 'Sublet work orders', icon: ClipboardList }] },
   { title: 'ACCOUNTING', links: [{ id: 'projectExpenses', label: 'Project expenses', icon: Wrench }, { id: 'officeExpenses', label: 'Office & general', icon: Receipt }, { id: 'estimates', label: 'Estimates', icon: FileText }, { id: 'invoices', label: 'Invoices', icon: FileSpreadsheet }, { id: 'profitLoss', label: 'Profit & loss', icon: Activity }] },
@@ -29,7 +30,8 @@ const navGroups: { title: string; links: { id: ModuleId; label: string; icon: Lu
 ]
 
 const labels: Record<ModuleId, { title: string; subtitle: string; add?: string }> = {
-  dashboard: { title: 'Company overview', subtitle: 'A live view of Revoxen Associates operations and financial performance.' },
+  dashboard: { title: 'Lead Source Tracking', subtitle: 'See which channels are generating construction opportunities.' },
+  leads: { title: 'Lead & Opportunity register', subtitle: 'Channel sources, qualified opportunities, site visits, and proposal stages.', add: 'New lead' },
   projects: { title: 'Projects', subtitle: 'Contract records, project ownership, client, status, and delivery dates.', add: 'New project' },
   projectAccounts: { title: 'Project accounts', subtitle: 'Budgets, audited approvals, committed costs, payments, and client receipts by project.' },
   employees: { title: 'Employee register', subtitle: 'Employment details, monthly compensation package, tax, benefits, and loan balance.', add: 'Add employee' },
@@ -46,7 +48,7 @@ const labels: Record<ModuleId, { title: string; subtitle: string; add?: string }
   users: { title: 'User access', subtitle: 'Create team accounts and control which CRM sections each person can view or edit.' },
 }
 
-const blankData: Bootstrap = { projects: [], employees: [], employeeLoans: [], payroll: [], assets: [], assetMaintenance: [], vendors: [], workOrders: [], expenses: [], documents: [] }
+const blankData: Bootstrap = { projects: [], leads: [], employees: [], employeeLoans: [], payroll: [], assets: [], assetMaintenance: [], vendors: [], workOrders: [], expenses: [], documents: [] }
 const currentDate = new Date()
 const currentYearNumber = new Date().getFullYear()
 const todayISO = () => {
@@ -73,6 +75,18 @@ function entryFields(module: EntryModule, data: Bootstrap): Field[] {
   const vendorOptions = data.vendors.map((vendor) => ({ value: String(vendor.id), label: `${text(vendor.vendor_code)} · ${text(vendor.company_name)}` }))
   const categories = ['Materials', 'Site labor', 'Subcontractor', 'Equipment rental', 'Transport', 'Fuel', 'Permit & fees', 'Utilities', 'Office supplies', 'Travel', 'Insurance', 'Maintenance', 'Professional fees', 'Other']
   switch (module) {
+    case 'leads': return [
+      { key: 'name', label: 'Opportunity / Project title', required: true },
+      { key: 'client', label: 'Client / Company name', required: true },
+      { key: 'source', label: 'Lead source channel', kind: 'select', required: true, options: ['Website Enquiries', 'Referrals', 'Repeat Customers', 'Paid Campaigns', 'Bid Platforms', 'Partners', 'Outbound Sales'].map((value) => ({ value, label: value })) },
+      { key: 'stage', label: 'Pipeline stage', kind: 'select', options: ['Lead Source', 'Qualified', 'Site Visit', 'Estimate / Bid', 'Proposal', 'Awarded', 'Lost'].map((value) => ({ value, label: value })) },
+      { key: 'value', label: 'Estimated opportunity value (PKR)', kind: 'number', min: 0, step: 1000 },
+      { key: 'work_type', label: 'Work type', kind: 'select', options: ['Whole-home renovation', 'Commercial fit-out', 'Luxury villa construction', 'Hospitality remodel', 'Office interior', 'Industrial warehouse', 'Exterior facade & roofing', 'Residential extension', 'Other'].map((value) => ({ value, label: value })) },
+      { key: 'site_address', label: 'Site location' },
+      { key: 'phone', label: 'Phone', kind: 'tel' },
+      { key: 'email', label: 'Email', kind: 'email' },
+      { key: 'notes', label: 'Requirement notes', kind: 'textarea' },
+    ]
     case 'projects': return [
       { key: 'project_code', label: 'Project code', required: true }, { key: 'name', label: 'Project name', required: true },
       { key: 'client', label: 'Client / customer', required: true }, { key: 'work_type', label: 'Work type', kind: 'select', options: ['New construction', 'Renovation', 'Interior fit-out', 'Kitchen', 'Bathroom', 'Electrical', 'Civil', 'Other'].map((value) => ({ value, label: value })) },
@@ -281,7 +295,7 @@ function OperationsApp() {
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
         {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
-        {!loading && !['dashboard', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable module={module} data={companyData} search={search} editable={canEdit(module)} canEdit={canEdit} onPayment={(type, id) => openDialog(type, id)} onLoan={() => openDialog('employeeLoan')} onAssetMaintenance={(id) => openDialog('assetMaintenance', id)} onInvoiceAudit={(id) => openDialog('invoiceAudit', id)} onExpensePayment={(id) => openDialog('expensePayment', id)} onInvoiceSend={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Sent' }) }); await loadData(); notify('Invoice sent to the client.') } catch (problem) { notify(message(problem)) } }} onPayrollPaid={async (id) => { try { await api(`/payroll/${id}/mark-paid`, { method: 'POST', body: JSON.stringify({ paid_date: todayISO() }) }); await loadData(); notify('Payroll run marked paid.') } catch (problem) { notify(message(problem)) } }} onEstimateApprove={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) }); await loadData(); notify('Estimate approved.') } catch (problem) { notify(message(problem)) } }} onEstimateConvert={async (id) => { try { await api(`/documents/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Estimate converted to a project.') } catch (problem) { notify(message(problem)) } }} />}
+        {!loading && !['dashboard', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable module={module} data={companyData} search={search} editable={canEdit(module)} canEdit={canEdit} onPayment={(type, id) => openDialog(type, id)} onLoan={() => openDialog('employeeLoan')} onAssetMaintenance={(id) => openDialog('assetMaintenance', id)} onInvoiceAudit={(id) => openDialog('invoiceAudit', id)} onExpensePayment={(id) => openDialog('expensePayment', id)} onLeadAdvance={async (id, currentStage) => { const stages = ['Lead Source', 'Qualified', 'Site Visit', 'Estimate / Bid', 'Proposal', 'Awarded']; const nextStage = stages[Math.min(stages.indexOf(currentStage) + 1, stages.length - 1)]; try { await api(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ stage: nextStage }) }); await loadData(); notify(`Lead advanced to ${nextStage}.`) } catch (err) { notify(message(err)) } }} onLeadConvert={async (id) => { try { await api(`/leads/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Lead converted to a Project!') } catch (err) { notify(message(err)) } }} onInvoiceSend={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Sent' }) }); await loadData(); notify('Invoice sent to the client.') } catch (problem) { notify(message(problem)) } }} onPayrollPaid={async (id) => { try { await api(`/payroll/${id}/mark-paid`, { method: 'POST', body: JSON.stringify({ paid_date: todayISO() }) }); await loadData(); notify('Payroll run marked paid.') } catch (problem) { notify(message(problem)) } }} onEstimateApprove={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) }); await loadData(); notify('Estimate approved.') } catch (problem) { notify(message(problem)) } }} onEstimateConvert={async (id) => { try { await api(`/documents/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Estimate converted to a project.') } catch (problem) { notify(message(problem)) } }} />}
         {finance && module === 'dashboard' && <div className="ops-accounting-note"><ShieldCheck size={16} /> Financial totals are calculated from database transactions. PKR tax is shown separately from operating income.</div>}
         <footer className="ops-footer"><span>REVOXEN ASSOCIATES · OPERATIONS SYSTEM</span><span><i /> SQLite persistent storage · PKR</span></footer>
       </div>
@@ -292,16 +306,37 @@ function OperationsApp() {
 }
 
 function Dashboard({ data, finance, onNavigate, period, setPeriod, canView, canEdit }: { data: Bootstrap; finance: Finance | null; onNavigate: (id: ModuleId) => void; period: string; setPeriod: (value: string) => void; canView: (id: ModuleId) => boolean; canEdit: (id: ModuleId) => boolean }) {
+  const [dashboardView, setDashboardView] = useState<'leadSource' | 'operational'>('leadSource')
+
+  if (!canView('dashboard') && !canView('leads') && !canView('projects') && !canView('employees') && !canView('payroll') && !canView('loans') && !canView('assets') && !canView('vendors') && !canView('workOrders') && !canView('projectExpenses') && !canView('officeExpenses') && !canView('estimates') && !canView('invoices') && !canView('profitLoss')) {
+    return <section className="ops-no-access"><ShieldCheck size={21} /><h2>No sections assigned</h2><p>Ask your administrator to enable the CRM sections you need.</p></section>
+  }
+
+  if (dashboardView === 'leadSource') {
+    return (
+      <LeadSourceTracking
+        onNavigate={onNavigate}
+        onSwitchToOperations={() => setDashboardView('operational')}
+        leadsData={data.leads}
+        canEdit={canEdit('leads')}
+      />
+    )
+  }
+
   const metrics = [
     { module: 'projects' as const, label: 'ACTIVE PROJECTS', value: data.projects.filter((project) => project.status !== 'Completed').length, detail: `${data.projects.length} total projects`, icon: BriefcaseBusiness, tone: 'red' },
     { module: 'projects' as const, label: 'MONTHLY CONTRACTS', value: pkr(data.projects.reduce((sum, project) => sum + Number(project.contract_amount || 0), 0)), detail: 'Recorded project value', icon: CircleDollarSign, tone: 'gray' },
     { module: 'payroll' as const, label: 'EMPLOYEE PAYROLL', value: pkr(data.payroll.filter((run) => run.pay_period === period).reduce((sum, run) => sum + Number(run.gross_salary || 0), 0)), detail: `${data.employees.length} registered employees`, icon: UsersRound, tone: 'black' },
     { module: 'profitLoss' as const, label: 'INVOICE RECEIVABLES', value: pkr(finance?.receivables ?? 0), detail: 'Outstanding client balance', icon: Receipt, tone: 'light' },
   ].filter(({ module }) => canView(module))
-  if (!canView('dashboard') && !canView('projects') && !canView('employees') && !canView('payroll') && !canView('loans') && !canView('assets') && !canView('vendors') && !canView('workOrders') && !canView('projectExpenses') && !canView('officeExpenses') && !canView('estimates') && !canView('invoices') && !canView('profitLoss')) {
-    return <section className="ops-no-access"><ShieldCheck size={21} /><h2>No sections assigned</h2><p>Ask your administrator to enable the CRM sections you need.</p></section>
-  }
+
   return <>
+    <div className="lst-sub-banner" style={{ marginBottom: 14 }}>
+      <span>Showing Financial &amp; Operations Overview</span>
+      <button onClick={() => setDashboardView('leadSource')}>
+        <PieIcon size={14} /> Back to Lead Source Tracking
+      </button>
+    </div>
     {canView('profitLoss') && <div className="ops-period-strip"><CalendarDays size={15} /><span>Period view</span><input aria-label="Dashboard month" type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /><button onClick={() => onNavigate('profitLoss')}>Open period P&L <ArrowRight size={13} /></button></div>}
     <section className="ops-metric-grid">{metrics.map(({ label, value, detail, icon: Icon, tone }) => <article className="ops-metric" key={label}><div className="ops-metric-head"><span>{label}</span><i className={`ops-metric-icon metric-${tone}`}><Icon size={16} /></i></div><strong>{value}</strong><small>{detail}</small></article>)}</section>
     <div className="ops-overview-grid">{canView('profitLoss') && <section className="ops-panel ops-pnl-panel"><div className="ops-panel-head"><div><span className="ops-section-label">MONTH-TO-DATE</span><h2>Income & expenditure</h2></div><button className="ops-text-link" onClick={() => onNavigate('profitLoss')}>Full statement <ArrowRight size={14} /></button></div><div className="ops-pnl-summary"><div><span>INVOICED INCOME</span><strong>{pkr(finance?.revenue)}</strong></div><div><span>OPERATING COSTS</span><strong>{pkr(finance?.totalOperatingExpenses)}</strong></div><div className={(finance?.profitOrLoss ?? 0) < 0 ? 'pnl-loss' : 'pnl-profit'}><span>NET PROFIT / (LOSS)</span><strong>{pkr(finance?.profitOrLoss)}</strong></div></div><div className="ops-mini-bars">{[0.58, 0.82, 0.47, 0.92, 0.68, 0.38, 0.75, 0.56, 1, 0.63, 0.44, 0.81].map((height, index) => <div key={index}><i style={{ height: `${height * 100}%` }} /><span>{['J','F','M','A','M','J','J','A','S','O','N','D'][index]}</span></div>)}</div></section>}
@@ -325,11 +360,12 @@ function ExpenseControlSummary({ kind, expenses }: { kind: 'Project' | 'General'
   return <section className="ops-metric-grid expense-control-summary">{metrics.map(({ label, value, detail, tone }) => <article className="ops-metric" key={label}><div className="ops-metric-head"><span>{label}</span><i className={`ops-metric-icon metric-${tone}`}><CircleDollarSign size={15} /></i></div><strong>{value}</strong><small>{detail}</small></article>)}</section>
 }
 
-function ModuleTable({ module, data, search, editable, canEdit, onPayment, onPayrollPaid, onEstimateApprove, onEstimateConvert, onLoan, onAssetMaintenance, onInvoiceAudit, onExpensePayment, onInvoiceSend }: { module: ModuleId; data: Bootstrap; search: string; editable: boolean; canEdit: (id: ModuleId) => boolean; onPayment: (type: 'invoicePayment' | 'workOrderPayment', id: number) => void; onPayrollPaid: (id: number) => void; onEstimateApprove: (id: number) => void; onEstimateConvert: (id: number) => void; onLoan: () => void; onAssetMaintenance: (id: number) => void; onInvoiceAudit: (id: number) => void; onExpensePayment: (id: number) => void; onInvoiceSend: (id: number) => void }) {
+function ModuleTable({ module, data, search, editable, canEdit, onPayment, onPayrollPaid, onEstimateApprove, onEstimateConvert, onLoan, onAssetMaintenance, onInvoiceAudit, onExpensePayment, onInvoiceSend, onLeadAdvance, onLeadConvert }: { module: ModuleId; data: Bootstrap; search: string; editable: boolean; canEdit: (id: ModuleId) => boolean; onPayment: (type: 'invoicePayment' | 'workOrderPayment', id: number) => void; onPayrollPaid: (id: number) => void; onEstimateApprove: (id: number) => void; onEstimateConvert: (id: number) => void; onLoan: () => void; onAssetMaintenance: (id: number) => void; onInvoiceAudit: (id: number) => void; onExpensePayment: (id: number) => void; onInvoiceSend: (id: number) => void; onLeadAdvance?: (id: number, currentStage: string) => void; onLeadConvert?: (id: number) => void }) {
   const filtered = (rows: Entry[]) => rows.filter((row) => !search || Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(search.toLowerCase())))
   let rows: Entry[] = []
   let columns: [string, string][] = []
   switch (module) {
+    case 'leads': rows = filtered(data.leads || []); columns = [['lead_code','LEAD ID'],['name','OPPORTUNITY'],['client','CLIENT'],['source','SOURCE CHANNEL'],['stage','STAGE'],['value','VALUE · PKR'],['site_address','LOCATION'],['created_at','DATE']]; break
     case 'projects': rows = filtered(data.projects); columns = [['project_code','PROJECT ID'],['name','PROJECT'],['client','CLIENT'],['site_address','SITE'],['contract_amount','CONTRACT · PKR'],['status','STATUS'],['due_date','TARGET']]; break
     case 'employees': rows = filtered(data.employees.map((employee) => ({ ...employee, total_package: Number(employee.base_salary || 0) + Number(employee.housing_allowance || 0) + Number(employee.transport_allowance || 0) + Number(employee.other_allowance || 0) + Number(employee.monthly_bonus || 0) }))); columns = [['employee_code','EMPLOYEE ID'],['full_name','EMPLOYEE'],['job_title','ROLE / TRADE'],['department','DEPARTMENT'],['base_salary','BASE'],['total_package','GROSS PACKAGE'],['loan_balance','LOAN BALANCE'],['status','STATUS']]; break
     case 'payroll': rows = filtered(data.payroll); columns = [['pay_period','PAY PERIOD'],['employee_code','ID'],['full_name','EMPLOYEE'],['overtime_amount','OVERTIME'],['gross_salary','GROSS'],['tax_deduction','TAX'],['loan_deduction','LOAN'],['net_salary','NET PAY'],['status','STATUS']]; break
@@ -342,14 +378,15 @@ function ModuleTable({ module, data, search, editable, canEdit, onPayment, onPay
     case 'estimates': rows = filtered(data.documents.filter((document) => document.document_type === 'Estimate')); columns = [['document_number','ESTIMATE'],['issue_date','DATE'],['client_name','CLIENT'],['subject','SCOPE'],['subtotal','SUBTOTAL'],['discount_amount','DISCOUNT'],['tax_amount','TAX'],['grand_total','TOTAL · PKR'],['status','STATUS']]; break
     case 'invoices': rows = filtered(data.documents.filter((document) => document.document_type === 'Invoice')); columns = [['document_number','INVOICE'],['billing_stage','BILLING STAGE'],['issue_date','ISSUED'],['due_date','DUE'],['client_name','CLIENT'],['subject','BILLING MILESTONE'],['grand_total','TOTAL'],['amount_paid','RECEIVED'],['audit_status','AUDIT'],['status','STATUS']]; break
   }
-  const hasAction = editable && canEdit(module) && (module !== 'employees' || canEdit('loans')) && ['payroll','loans','employees','assets','invoices','workOrders','estimates','projectExpenses','officeExpenses'].includes(module)
+  const hasAction = editable && canEdit(module) && (module !== 'employees' || canEdit('loans')) && ['leads','payroll','loans','employees','assets','invoices','workOrders','estimates','projectExpenses','officeExpenses'].includes(module)
   return <section className="ops-panel ops-table-panel"><div className="ops-panel-head"><div><span className="ops-section-label">{module.toUpperCase().replaceAll(/([A-Z])/g, ' $1')}</span><h2>{rows.length} {rows.length === 1 ? 'record' : 'records'}</h2></div><div className="ops-table-tools">{module === 'payroll' && <span className="ops-action-chip">Gross includes overtime</span>}<button className="ops-icon-button" aria-label="Filter records"><Filter size={15} /></button></div></div>
-    <div className="ops-table-wrap"><table className="ops-table"><thead><tr>{columns.map(([key, label]) => <th key={key}>{label}</th>)}{hasAction && <th>ACTION</th>}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}>{columns.map(([key]) => <td key={key}>{renderValue(key, row[key], row)}</td>)}{module === 'payroll' && <td>{row.status === 'Draft' && <button className="ops-row-action" onClick={() => onPayrollPaid(Number(row.id))}>Mark paid</button>}</td>}{module === 'employees' && <td><button className="ops-row-action" onClick={onLoan}>Issue loan</button></td>}{module === 'loans' && <td>{row.status === 'Active' ? 'Repay through payroll' : '—'}</td>}{module === 'assets' && <td><button className="ops-row-action" onClick={() => onAssetMaintenance(Number(row.id))}>Log maintenance</button></td>}{['projectExpenses','officeExpenses'].includes(module) && <td>{Number(row.amount || 0) + Number(row.tax_amount || 0) > Number(row.paid_amount || 0) && row.status !== 'Void' ? <button className="ops-row-action" onClick={() => onExpensePayment(Number(row.id))}>Settle balance</button> : 'Paid'}</td>}{module === 'invoices' && <td className="ops-actions-cell">{row.billing_stage === 'Final' && row.audit_status !== 'Passed' && <button className="ops-row-action" onClick={() => onInvoiceAudit(Number(row.id))}>Complete audit</button>}{row.status === 'Draft' && (row.billing_stage !== 'Final' || row.audit_status === 'Passed') && <button className="ops-row-action" onClick={() => onInvoiceSend(Number(row.id))}>Send invoice</button>}{Number(row.grand_total || 0) > Number(row.amount_paid || 0) && row.status !== 'Void' && row.status !== 'Draft' && <button className="ops-row-action" onClick={() => onPayment('invoicePayment', Number(row.id))}>Record payment</button>}</td>}{module === 'workOrders' && <td>{Number(row.amount || 0) + Number(row.tax_amount || 0) - Number(row.retention_amount || 0) > Number(row.paid_amount || 0) && <button className="ops-row-action" onClick={() => onPayment('workOrderPayment', Number(row.id))}>Record payment</button>}</td>}{module === 'estimates' && <td>{row.status === 'Draft' || row.status === 'Sent' ? <button className="ops-row-action" onClick={() => onEstimateApprove(Number(row.id))}>Approve</button> : row.status === 'Approved' ? <button className="ops-row-action" onClick={() => onEstimateConvert(Number(row.id))}>Create project</button> : '—'}</td>}</tr>)}</tbody></table>{rows.length === 0 && <div className="ops-empty"><span><Search size={18} /></span><strong>{search ? 'No matching records' : 'No records entered yet'}</strong><p>{search ? 'Try a different search.' : 'Use the action above to add the first record.'}</p></div>}</div><div className="ops-table-foot"><span>Financial values displayed in Pakistani rupees (PKR).</span><span>{rows.length} total</span></div></section>
+    <div className="ops-table-wrap"><table className="ops-table"><thead><tr>{columns.map(([key, label]) => <th key={key}>{label}</th>)}{hasAction && <th>ACTION</th>}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}>{columns.map(([key]) => <td key={key}>{renderValue(key, row[key], row)}</td>)}{module === 'leads' && <td className="ops-actions-cell">{row.stage !== 'Awarded' && row.stage !== 'Lost' && onLeadAdvance && <button className="ops-row-action" onClick={() => onLeadAdvance(Number(row.id), String(row.stage))}>Advance stage</button>}{row.stage === 'Awarded' && !row.project_id && onLeadConvert && <button className="ops-row-action" onClick={() => onLeadConvert(Number(row.id))}>Create project</button>}{Boolean(row.project_id) && <span className="ops-action-chip">Project linked</span>}</td>}{module === 'payroll' && <td>{row.status === 'Draft' && <button className="ops-row-action" onClick={() => onPayrollPaid(Number(row.id))}>Mark paid</button>}</td>}{module === 'employees' && <td><button className="ops-row-action" onClick={onLoan}>Issue loan</button></td>}{module === 'loans' && <td>{row.status === 'Active' ? 'Repay through payroll' : '—'}</td>}{module === 'assets' && <td><button className="ops-row-action" onClick={() => onAssetMaintenance(Number(row.id))}>Log maintenance</button></td>}{['projectExpenses','officeExpenses'].includes(module) && <td>{Number(row.amount || 0) + Number(row.tax_amount || 0) > Number(row.paid_amount || 0) && row.status !== 'Void' ? <button className="ops-row-action" onClick={() => onExpensePayment(Number(row.id))}>Settle balance</button> : 'Paid'}</td>}{module === 'invoices' && <td className="ops-actions-cell">{row.billing_stage === 'Final' && row.audit_status !== 'Passed' && <button className="ops-row-action" onClick={() => onInvoiceAudit(Number(row.id))}>Complete audit</button>}{row.status === 'Draft' && (row.billing_stage !== 'Final' || row.audit_status === 'Passed') && <button className="ops-row-action" onClick={() => onInvoiceSend(Number(row.id))}>Send invoice</button>}{Number(row.grand_total || 0) > Number(row.amount_paid || 0) && row.status !== 'Void' && row.status !== 'Draft' && <button className="ops-row-action" onClick={() => onPayment('invoicePayment', Number(row.id))}>Record payment</button>}</td>}{module === 'workOrders' && <td>{Number(row.amount || 0) + Number(row.tax_amount || 0) - Number(row.retention_amount || 0) > Number(row.paid_amount || 0) && <button className="ops-row-action" onClick={() => onPayment('workOrderPayment', Number(row.id))}>Record payment</button>}</td>}{module === 'estimates' && <td>{row.status === 'Draft' || row.status === 'Sent' ? <button className="ops-row-action" onClick={() => onEstimateApprove(Number(row.id))}>Approve</button> : row.status === 'Approved' ? <button className="ops-row-action" onClick={() => onEstimateConvert(Number(row.id))}>Create project</button> : '—'}</td>}</tr>)}</tbody></table>{rows.length === 0 && <div className="ops-empty"><span><Search size={18} /></span><strong>{search ? 'No matching records' : 'No records entered yet'}</strong><p>{search ? 'Try a different search.' : 'Use the action above to add the first record.'}</p></div>}</div><div className="ops-table-foot"><span>Financial values displayed in Pakistani rupees (PKR).</span><span>{rows.length} total</span></div></section>
 }
 
 function renderValue(key: string, value: unknown, row: Entry) {
-  if (key === 'status') return <span className={`ops-status ops-status-${String(value).toLowerCase().replaceAll(/[^a-z]+/g, '-')}`}><i />{text(value)}</span>
-  if (['amount','contract_amount','base_salary','gross_salary','net_salary','tax_deduction','loan_deduction','overtime_amount','housing_allowance','purchase_cost','paid_amount','grand_total','subtotal','discount_amount','tax_amount','amount_paid'].includes(key)) return <strong className="ops-money">{pkr(value)}</strong>
+  if (key === 'status' || key === 'stage') return <span className={`ops-status ops-status-${String(value).toLowerCase().replaceAll(/[^a-z]+/g, '-')}`}><i />{text(value)}</span>
+  if (key === 'source') return <span className="ops-action-chip" style={{ background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}>{text(value)}</span>
+  if (['value','amount','contract_amount','base_salary','gross_salary','net_salary','tax_deduction','loan_deduction','overtime_amount','housing_allowance','purchase_cost','paid_amount','grand_total','subtotal','discount_amount','tax_amount','amount_paid'].includes(key)) return <strong className="ops-money">{pkr(value)}</strong>
   if (key === 'scope' || key === 'description' || key === 'subject') return <span className="ops-wrap-cell" title={text(value)}>{text(value)}</span>
   if (key === 'full_name' || key === 'name' || key === 'company_name') return <span className="ops-primary-cell">{text(value)}{Boolean(row.job_title) && key === 'full_name' && <small>{text(row.job_title)}</small>}</span>
   return text(value)
@@ -497,7 +534,7 @@ function FormField({ field, value, onChange }: { field: Field; value: string; on
 }
 
 function apiRoute(module: EntryModule): string {
-  const routes: Record<EntryModule, string> = { projects: 'projects', employees: 'employees', assets: 'assets', vendors: 'vendors', workOrders: 'work-orders', projectExpenses: 'expenses', officeExpenses: 'expenses', estimates: 'documents', invoices: 'documents' }
+  const routes: Record<EntryModule, string> = { leads: 'leads', projects: 'projects', employees: 'employees', assets: 'assets', vendors: 'vendors', workOrders: 'work-orders', projectExpenses: 'expenses', officeExpenses: 'expenses', estimates: 'documents', invoices: 'documents' }
   return routes[module]
 }
 

@@ -2,7 +2,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import type { Db } from './db.js'
 
 export const permissionModules = [
-  'dashboard', 'projects', 'projectAccounts', 'employees', 'payroll', 'loans', 'assets', 'vendors', 'workOrders',
+  'dashboard', 'leads', 'projects', 'projectAccounts', 'employees', 'payroll', 'loans', 'assets', 'vendors', 'workOrders',
   'projectExpenses', 'officeExpenses', 'estimates', 'invoices', 'profitLoss',
 ] as const
 
