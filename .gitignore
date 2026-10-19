@@ -22,7 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
 .env

@@ -1,12 +1,30 @@
 import Database from 'better-sqlite3'
-import { mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 export type Db = Database.Database
 
-export function openDatabase(filename = resolve('data/revoxen.sqlite')): Db {
-  if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true })
-  const db = new Database(filename)
+export function openDatabase(filename?: string): Db {
+  let dbPath: string
+  if (filename) {
+    dbPath = filename
+  } else if (process.env.DB_FILE) {
+    dbPath = resolve(process.env.DB_FILE)
+  } else if (process.env.VERCEL) {
+    dbPath = '/tmp/revoxen.sqlite'
+    if (!existsSync(dbPath)) {
+      mkdirSync(dirname(dbPath), { recursive: true })
+      const bundled = resolve(process.cwd(), 'data/revoxen.sqlite')
+      if (existsSync(bundled)) {
+        copyFileSync(bundled, dbPath)
+      }
+    }
+  } else {
+    dbPath = resolve('data/revoxen.sqlite')
+  }
+
+  if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true })
+  const db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.pragma('busy_timeout = 5000')
@@ -189,7 +207,7 @@ export function openDatabase(filename = resolve('data/revoxen.sqlite')): Db {
   ensureColumn(db, 'expenses', 'paid_amount', 'REAL NOT NULL DEFAULT 0')
   ensureColumn(db, 'users', 'google_id', "TEXT NOT NULL DEFAULT ''")
 
-  if (filename !== ':memory:') {
+  if (dbPath !== ':memory:') {
     seedLeadsIfEmpty(db)
   }
   return db

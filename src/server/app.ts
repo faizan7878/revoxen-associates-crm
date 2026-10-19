@@ -49,10 +49,19 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     response.json(user)
   })
 
-  // --- Google OAuth 2.0 ---
-  app.get('/api/auth/google/url', (_request, response) => {
+  function getGoogleConfig(request: Request) {
     const clientId = process.env.GOOGLE_CLIENT_ID
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    const host = request.headers.host || ''
+    const proto = (request.headers['x-forwarded-proto'] as string) || (host.includes('localhost') ? 'http' : 'https')
+    const origin = (request.headers.origin as string) || (host ? `${proto}://${host}` : 'https://revoxen-associates-crm.vercel.app')
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${origin}/`
+    return { clientId, clientSecret, redirectUri }
+  }
+
+  // --- Google OAuth 2.0 ---
+  app.get('/api/auth/google/url', (request, response) => {
+    const { clientId, redirectUri } = getGoogleConfig(request)
     if (!clientId || !redirectUri) throw new HttpError(503, 'Google Sign-In is not configured on this server.')
     const client = new OAuth2Client(clientId)
     const url = client.generateAuthUrl({
@@ -65,9 +74,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
   })
 
   app.post('/api/auth/google/callback', async (request, response) => {
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI
+    const { clientId, clientSecret, redirectUri } = getGoogleConfig(request)
     if (!clientId || !clientSecret || !redirectUri) throw new HttpError(503, 'Google Sign-In is not configured on this server.')
     const body = objectBody(request)
     const code = typeof body.code === 'string' ? body.code : ''
@@ -865,7 +872,8 @@ function sendSession(db: Db, userId: number, response: Response) {
 }
 
 function sessionCookie(token: string, maxAge: number) {
-  return `revoxen_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`
+  const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
+  return `revoxen_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${isProd ? '; Secure' : ''}`
 }
 
 function sessionToken(request: Request): string | undefined {
