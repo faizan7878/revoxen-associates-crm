@@ -9,7 +9,9 @@
     "dev:api": "tsx watch src/server/index.ts",
     "dev:web": "vite",
     "reset-password": "tsx src/server/reset-password.ts",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "build:prod": "npm run build",
+    "start:prod": "NODE_ENV=production tsx src/server/index.ts",
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview"

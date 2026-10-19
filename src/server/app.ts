@@ -1,4 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
+import { existsSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Db } from './db.js'
 import { calculateDocument, calculatePayroll } from './db.js'
 import { allPermissions, createSession, getSessionUser, hashPassword, normalizePermissions, permissionModules, tokenHash, verifyPassword, type AuthUser, type PermissionModule, type Permissions } from './auth.js'
@@ -774,6 +777,16 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       billedInPeriod, expenseByCategory, projectProfitability,
     })
   })
+
+  // --- Production static file serving ---
+  const __dirname = dirname(fileURLToPath(import.meta.url))
+  const distPath = join(__dirname, '../../dist')
+  if (existsSync(distPath)) {
+    app.use(express.static(distPath))
+    app.get(/^(?!\/api).*/, (_request, response) => {
+      response.sendFile(join(distPath, 'index.html'))
+    })
+  }
 
   app.use((_request, _response, next) => next(new HttpError(404, 'API route not found.')))
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
