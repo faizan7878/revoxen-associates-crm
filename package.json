@@ -6,7 +6,7 @@
   "scripts": {
     "start": "npm run dev",
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "tsx --env-file=.env watch src/server/index.ts",
+    "dev:api": "tsx watch --env-file=.env src/server/index.ts",
     "dev:web": "vite",
     "reset-password": "tsx --env-file=.env src/server/reset-password.ts",
     "build": "vite build",
