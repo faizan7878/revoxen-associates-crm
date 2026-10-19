@@ -206,6 +206,11 @@ export function openDatabase(filename?: string): Db {
   ensureColumn(db, 'projects', 'lead_id', 'INTEGER REFERENCES leads(id) ON DELETE SET NULL')
   ensureColumn(db, 'expenses', 'paid_amount', 'REAL NOT NULL DEFAULT 0')
   ensureColumn(db, 'users', 'google_id', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'users', 'phone', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'users', 'recovery_email', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'users', 'reset_code', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'users', 'reset_expires', "TEXT NOT NULL DEFAULT ''")
+  db.prepare(`UPDATE users SET phone = '+92 300 5550199', recovery_email = 'faizeawan123@gmail.com' WHERE id = 1 AND (phone = '' OR recovery_email = '')`).run()
 
   if (dbPath !== ':memory:') {
     seedLeadsIfEmpty(db)

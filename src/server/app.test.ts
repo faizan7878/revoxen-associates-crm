@@ -246,4 +246,38 @@ describe('authentication and access control', () => {
     await request(app).post('/api/auth/setup').send({ name: 'Admin', email: 'admin@example.com', password: 'secure-admin-pass' })
     expect((await request(app).post('/api/auth/login').send({ email: 'admin@example.com', password: 'wrong-password' })).status).toBe(401)
   })
+
+  it('allows password recovery via primary email, recovery email, or phone', async () => {
+    await request(app).post('/api/auth/setup').send({ name: 'Admin', email: 'admin@example.com', password: 'secure-admin-pass' })
+    db.prepare(`UPDATE users SET phone = '+92 300 5550199', recovery_email = 'backup@example.com' WHERE email = 'admin@example.com'`).run()
+
+    // 1. Recover via primary email
+    const req1 = await request(app).post('/api/auth/forgot-password').send({ identifier: 'admin@example.com' })
+    expect(req1.status).toBe(200)
+    expect(req1.body.code).toMatch(/^\d{6}$/)
+    expect(req1.body.destination).toContain('@example.com')
+
+    // 2. Recover via recovery email
+    const req2 = await request(app).post('/api/auth/forgot-password').send({ identifier: 'backup@example.com' })
+    expect(req2.status).toBe(200)
+    expect(req2.body.code).toMatch(/^\d{6}$/)
+
+    // 3. Recover via phone number
+    const req3 = await request(app).post('/api/auth/forgot-password').send({ identifier: '03005550199' })
+    expect(req3.status).toBe(200)
+    expect(req3.body.code).toMatch(/^\d{6}$/)
+
+    // 4. Reset password using the code
+    const resetRes = await request(app).post('/api/auth/reset-password').send({
+      identifier: '03005550199',
+      code: req3.body.code,
+      newPassword: 'new-secure-password-2026',
+    })
+    expect(resetRes.status).toBe(200)
+    expect(resetRes.body.email).toBe('admin@example.com')
+
+    // 5. Login with new password
+    const loginRes = await request(app).post('/api/auth/login').send({ email: 'admin@example.com', password: 'new-secure-password-2026' })
+    expect(loginRes.status).toBe(200)
+  })
 })

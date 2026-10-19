@@ -41,3 +41,24 @@
 @keyframes auth-spin { to { transform: rotate(360deg); } }
 .auth-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 4px; color: #a0a1a3; font-size: 8.5px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
 .auth-divider::before,.auth-divider::after { content: ''; flex: 1; height: 1px; background: #e8e8e6; }
+
+/* Password show/hide and input wrapper */
+.auth-field-header { display: flex; justify-content: space-between; align-items: center; }
+.auth-input-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+.auth-input-wrapper input { width: 100%; padding-right: 36px; }
+.auth-toggle-pwd { position: absolute; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; color: #88898b; background: transparent; border: none; cursor: pointer; border-radius: 3px; transition: color .15s, background .15s; }
+.auth-toggle-pwd:hover { color: #202123; background: #f0f0ee; }
+
+/* Forgot password link & actions */
+.auth-link-btn { background: none; border: none; color: #b3202a; font: 600 9px 'DM Sans', sans-serif; cursor: pointer; padding: 0; transition: color .15s; text-decoration: none; }
+.auth-link-btn:hover { color: #8f1720; text-decoration: underline; }
+.auth-back-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; background: none; border: none; color: #666769; font: 600 10px 'DM Sans', sans-serif; cursor: pointer; padding: 8px 0; transition: color .15s; }
+.auth-back-btn:hover { color: #202123; }
+.auth-verify-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+
+/* Code verification hint badge */
+.auth-code-badge { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; margin-top: 14px; color: #1e6935; background: #eef9f2; border: 1px solid #c7ebd1; border-radius: 3px; font-size: 10px; }
+.auth-code-badge svg { flex-shrink: 0; margin-top: 2px; color: #2d8a4e; }
+.auth-code-badge div { display: flex; flex-direction: column; gap: 2px; }
+.auth-code-badge strong { font-size: 13px; letter-spacing: 2px; color: #16562a; font-family: monospace; }
+.auth-code-badge small { color: #497a55; font-size: 9px; }

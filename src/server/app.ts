@@ -55,6 +55,81 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     response.json(user)
   })
 
+  function findUserByIdentifier(identifier: string) {
+    const raw = identifier.trim()
+    if (!raw) throw new HttpError(400, 'Please enter an email or phone number.')
+    const normalizedDigits = raw.replace(/\D/g, '')
+    const lower = raw.toLowerCase()
+
+    let user = db.prepare('SELECT id, name, email, recovery_email, phone, active, reset_code, reset_expires FROM users WHERE LOWER(email) = ? OR LOWER(recovery_email) = ?').get(lower, lower) as (Row & { id: number; name: string; email: string; recovery_email: string; phone: string; active: number; reset_code: string; reset_expires: string }) | undefined
+
+    if (!user && normalizedDigits.length >= 7) {
+      const allUsers = db.prepare("SELECT id, name, email, recovery_email, phone, active, reset_code, reset_expires FROM users WHERE active = 1 AND phone <> ''").all() as (Row & { id: number; name: string; email: string; recovery_email: string; phone: string; active: number; reset_code: string; reset_expires: string })[]
+      const inputSuffix = normalizedDigits.slice(-9)
+      user = allUsers.find(u => {
+        const uDigits = u.phone.replace(/\D/g, '')
+        return uDigits.length >= 7 && (uDigits.slice(-9) === inputSuffix || uDigits.endsWith(normalizedDigits) || normalizedDigits.endsWith(uDigits))
+      })
+    }
+    return user
+  }
+
+  app.post('/api/auth/forgot-password', (request, response) => {
+    const body = objectBody(request)
+    const identifier = typeof body.identifier === 'string' ? body.identifier.trim() : ''
+    const user = findUserByIdentifier(identifier)
+    if (!user || !user.active) {
+      throw new HttpError(404, 'No active account found matching this email or phone number.')
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000))
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    db.prepare('UPDATE users SET reset_code = ?, reset_expires = ? WHERE id = ?').run(code, expires, user.id)
+
+    let destination = user.email
+    if (user.recovery_email && identifier.toLowerCase() === user.recovery_email.toLowerCase()) {
+      destination = user.recovery_email
+    } else if (user.phone && identifier.replace(/\D/g, '').length >= 7) {
+      destination = user.phone
+    }
+
+    const masked = maskTarget(destination)
+    console.info(`[Password Reset] Code for ${user.email} (${destination}): ${code}`)
+
+    response.json({
+      ok: true,
+      message: `Verification code sent to ${masked}`,
+      destination: masked,
+      code,
+    })
+  })
+
+  app.post('/api/auth/reset-password', (request, response) => {
+    const body = objectBody(request)
+    const identifier = typeof body.identifier === 'string' ? body.identifier.trim() : ''
+    const code = typeof body.code === 'string' ? body.code.trim() : ''
+    const newPassword = validPassword(body.newPassword)
+
+    const user = findUserByIdentifier(identifier)
+    if (!user || !user.active) {
+      throw new HttpError(404, 'No active account found matching this identifier.')
+    }
+
+    if (!user.reset_code || user.reset_code !== code) {
+      throw new HttpError(400, 'Invalid verification code. Please check and try again.')
+    }
+
+    if (!user.reset_expires || Date.parse(user.reset_expires) < Date.now()) {
+      throw new HttpError(400, 'Verification code has expired. Please request a new one.')
+    }
+
+    const passwordHash = hashPassword(newPassword)
+    db.prepare("UPDATE users SET password_hash = ?, reset_code = '', reset_expires = '' WHERE id = ?").run(passwordHash, user.id)
+    db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(user.id)
+
+    return sendSession(db, user.id, response)
+  })
+
   function getGoogleConfig(request: Request) {
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
@@ -904,6 +979,19 @@ function validEmail(value: unknown): string {
 function validPassword(value: unknown): string {
   if (typeof value !== 'string' || value.length < 10 || value.length > 128) throw new HttpError(400, 'Password must be between 10 and 128 characters.')
   return value
+}
+
+function maskTarget(target: string): string {
+  if (target.includes('@')) {
+    const [name, domain] = target.split('@')
+    const maskedName = name.length <= 2 ? `${name[0]}*` : `${name.slice(0, 2)}${'*'.repeat(Math.min(name.length - 2, 4))}`
+    return `${maskedName}@${domain}`
+  }
+  const digits = target.replace(/\s+/g, '')
+  if (digits.length > 4) {
+    return `${digits.slice(0, 4)} *** ${digits.slice(-4)}`
+  }
+  return target
 }
 
 function safePermissions(value: string): Permissions {
