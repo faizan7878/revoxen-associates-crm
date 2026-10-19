@@ -6,12 +6,12 @@
   "scripts": {
     "start": "npm run dev",
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "tsx watch src/server/index.ts",
+    "dev:api": "tsx --env-file=.env watch src/server/index.ts",
     "dev:web": "vite",
-    "reset-password": "tsx src/server/reset-password.ts",
+    "reset-password": "tsx --env-file=.env src/server/reset-password.ts",
     "build": "vite build",
     "build:prod": "npm run build",
-    "start:prod": "NODE_ENV=production tsx src/server/index.ts",
+    "start:prod": "NODE_ENV=production tsx --env-file=.env src/server/index.ts",
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview"
