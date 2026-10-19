@@ -276,6 +276,10 @@ function App() {
         <button className={`nav-item ${section === 'Team' ? 'nav-item-active' : ''}`} onClick={() => { setSection('Team'); setMobileNav(false) }}>
           <HardHat size={17} strokeWidth={1.8} /><span>Team</span><span className="team-mini-stack"><i>O</i><i>M</i><i>A</i></span>
         </button>
+        <div className="nav-caption tools-caption">OPERATIONS</div>
+        <a className="nav-item" href="?view=operations" style={{ textDecoration: 'none' }}>
+          <Activity size={17} strokeWidth={1.8} /><span>Operations Ledger</span>
+        </a>
         <div className="sidebar-spacer" />
         <div className="sidebar-note">
           <div className="sidebar-note-icon"><Wrench size={17} /></div>

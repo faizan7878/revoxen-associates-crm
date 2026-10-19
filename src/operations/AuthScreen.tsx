@@ -249,6 +249,11 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
               {saving ? 'Please wait…' : setupRequired ? 'Create admin account' : 'Sign in'}
               <ArrowRight size={16} />
             </button>
+            <div style={{ marginTop: '16px', textAlign: 'center' }}>
+              <a href="/" style={{ color: '#769173', textDecoration: 'none', fontSize: '13px', fontWeight: 500 }}>
+                ← Return to CRM Dashboard
+              </a>
+            </div>
           </form>
         </section>
       )}
