@@ -15,7 +15,13 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
   const app = express()
   app.use(express.json({ limit: '1mb' }))
 
-  app.get('/api/health', (_request, response) => response.json({ status: 'ok', storage: 'SQLite' }))
+  app.get('/api/health', (_request, response) => response.json({
+    status: 'ok',
+    storage: 'SQLite',
+    hasGoogleId: Boolean(process.env.GOOGLE_CLIENT_ID),
+    hasGoogleSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+    hasRedirectUri: Boolean(process.env.GOOGLE_REDIRECT_URI),
+  }))
   app.get('/api/auth/status', (_request, response) => response.json({ setupRequired: Number((db.prepare('SELECT COUNT(*) AS count FROM users').get() as Row).count) === 0 }))
   app.post('/api/auth/setup', (request, response) => {
     const body = objectBody(request)
