@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { OAuth2Client } from 'google-auth-library'
 import type { Db } from './db.js'
 import { calculateDocument, calculatePayroll } from './db.js'
-import { allPermissions, createSession, getSessionUser, hashPassword, normalizePermissions, permissionModules, tokenHash, verifyPassword, type AuthUser, type PermissionModule, type Permissions } from './auth.js'
+import { allPermissions, createSession, getSessionUser, hashPassword, normalizePermissions, parseSqliteUtc, permissionModules, tokenHash, verifyPassword, type AuthUser, type PermissionModule, type Permissions } from './auth.js'
 
 type Row = Record<string, unknown>
 const isoDay = /^\d{4}-\d{2}-\d{2}$/
@@ -37,17 +37,32 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
   })
   app.post('/api/auth/login', (request, response) => {
     const body = objectBody(request)
-    const email = validEmail(body.email)
+    const rawIdentifier = (typeof body.email === 'string' ? body.email : (typeof body.identifier === 'string' ? body.identifier : '')).trim()
     const password = typeof body.password === 'string' ? body.password : ''
-    const row = db.prepare('SELECT id,email,password_hash,active FROM users WHERE email=?').get(email) as { id: number; email: string; password_hash: string; active: number } | undefined
+    if (!rawIdentifier) throw new HttpError(400, 'Please enter your work email, recovery email, or phone.')
+
+    const user = findUserByIdentifier(rawIdentifier)
+    if (!user || !user.active) throw new HttpError(401, 'Email or password is incorrect.')
+
+    const row = db.prepare('SELECT id,email,password_hash,active FROM users WHERE id=?').get(user.id) as { id: number; email: string; password_hash: string; active: number } | undefined
     if (!row || !row.active || !verifyPassword(password, row.password_hash)) throw new HttpError(401, 'Email or password is incorrect.')
-    return sendSession(db, row.id, response)
+
+    const meta = { ip: parseIp(request), device: parseDevice(request) }
+    logActivity(db, user.id, 'Sign In', 'Authentication', `Signed in successfully from ${meta.device}`, request)
+    return sendSession(db, row.id, response, meta)
   })
   app.post('/api/auth/logout', (request, response) => {
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Sign Out', 'Authentication', 'Signed out of CRM workspace', request)
     const token = sessionToken(request)
     if (token) db.prepare('DELETE FROM user_sessions WHERE token_hash=?').run(tokenHash(token))
     response.setHeader('Set-Cookie', sessionCookie('', 0))
     response.status(204).end()
+  })
+  app.post('/api/auth/heartbeat', (request, response) => {
+    const user = currentUser(request, db)
+    if (!user) return response.status(401).json({ ok: false })
+    response.json({ ok: true, active: true })
   })
   app.get('/api/auth/me', (request, response) => {
     const user = currentUser(request, db)
@@ -61,7 +76,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const normalizedDigits = raw.replace(/\D/g, '')
     const lower = raw.toLowerCase()
 
-    let user = db.prepare('SELECT id, name, email, recovery_email, phone, active, reset_code, reset_expires FROM users WHERE LOWER(email) = ? OR LOWER(recovery_email) = ?').get(lower, lower) as (Row & { id: number; name: string; email: string; recovery_email: string; phone: string; active: number; reset_code: string; reset_expires: string }) | undefined
+    let user = db.prepare('SELECT id, name, email, recovery_email, phone, active, reset_code, reset_expires FROM users WHERE LOWER(email) = ? OR LOWER(recovery_email) = ? OR LOWER(name) = ?').get(lower, lower, lower) as (Row & { id: number; name: string; email: string; recovery_email: string; phone: string; active: number; reset_code: string; reset_expires: string }) | undefined
 
     if (!user && normalizedDigits.length >= 7) {
       const allUsers = db.prepare("SELECT id, name, email, recovery_email, phone, active, reset_code, reset_expires FROM users WHERE active = 1 AND phone <> ''").all() as (Row & { id: number; name: string; email: string; recovery_email: string; phone: string; active: number; reset_code: string; reset_expires: string })[]
@@ -212,31 +227,104 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     next()
   })
 
-  app.get('/api/users', (_request, response) => response.json(db.prepare('SELECT id,name,email,role,active,permissions,created_at FROM users ORDER BY name').all().map((row) => {
-    const user = row as { role: 'admin' | 'user'; permissions: string }
-    return { ...user, permissions: user.role === 'admin' ? allPermissions() : safePermissions(user.permissions) }
-  })))
+  app.get('/api/users', (_request, response) => {
+    const rows = db.prepare(`
+      SELECT u.id, u.name, u.email, u.phone, u.recovery_email, u.role, u.active, u.permissions, u.created_at,
+        (SELECT s.last_active_at FROM user_sessions s WHERE s.user_id = u.id ORDER BY s.created_at DESC LIMIT 1) AS last_active_at,
+        (SELECT s.device FROM user_sessions s WHERE s.user_id = u.id ORDER BY s.created_at DESC LIMIT 1) AS last_device,
+        (SELECT COALESCE(SUM(s.duration_seconds), 0) FROM user_sessions s WHERE s.user_id = u.id) AS total_duration,
+        (SELECT COUNT(*) FROM user_activity_logs a WHERE a.user_id = u.id) AS activity_count
+      FROM users u ORDER BY u.name
+    `).all() as (Row & { role: 'admin' | 'user'; permissions: string; last_active_at?: string; total_duration?: number; activity_count?: number; last_device?: string })[]
+
+    response.json(rows.map((user) => {
+      const isOnline = user.last_active_at ? (Date.now() - parseSqliteUtc(user.last_active_at) < 5 * 60 * 1000) : false
+      return {
+        ...user,
+        permissions: user.role === 'admin' ? allPermissions() : safePermissions(user.permissions),
+        isOnline,
+        totalDuration: Number(user.total_duration || 0),
+        activityCount: Number(user.activity_count || 0),
+        lastDevice: user.last_device || 'Offline',
+      }
+    }))
+  })
   app.post('/api/users', (request, response) => {
     const body = objectBody(request)
     const name = requiredText(body, 'name')
     const email = validEmail(body.email)
     const password = validPassword(body.password)
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : ''
+    const recoveryEmail = typeof body.recovery_email === 'string' && body.recovery_email.trim() ? validEmail(body.recovery_email) : ''
+    const role = body.role === 'admin' ? 'admin' : 'user'
     const permissions = normalizePermissions(body.permissions)
-    const result = db.prepare("INSERT INTO users (name,email,password_hash,permissions) VALUES (?,?,?,?)")
-      .run(name, email, hashPassword(password), JSON.stringify(permissions))
-    response.status(201).json({ id: Number(result.lastInsertRowid), name, email, role: 'user', active: 1, permissions })
+    const result = db.prepare("INSERT INTO users (name,email,password_hash,role,permissions,phone,recovery_email) VALUES (?,?,?,?,?,?,?)")
+      .run(name, email, hashPassword(password), role, JSON.stringify(permissions), phone, recoveryEmail)
+    const newId = Number(result.lastInsertRowid)
+    const current = currentUser(request, db)
+    if (current) logActivity(db, current.id, 'Created User', 'User Management', `Created account for ${name} (${email})`, request)
+    response.status(201).json({ id: newId, name, email, phone, recovery_email: recoveryEmail, role, active: 1, permissions })
   })
   app.patch('/api/users/:id', (request, response) => {
     const id = idParam(request)
     const body = objectBody(request)
-    const target = db.prepare('SELECT id,name,email,role,active,permissions FROM users WHERE id=?').get(id) as { id: number; name: string; email: string; role: 'admin' | 'user'; active: number; permissions: string } | undefined
+    const target = db.prepare('SELECT id,name,email,phone,recovery_email,role,active,permissions FROM users WHERE id=?').get(id) as { id: number; name: string; email: string; phone: string; recovery_email: string; role: 'admin' | 'user'; active: number; permissions: string } | undefined
     if (!target) throw new HttpError(404, 'User not found.')
     if (target.role === 'admin' && body.active === false) throw new HttpError(400, 'An admin account cannot be disabled here.')
     const active = body.active === undefined ? target.active : body.active === true ? 1 : body.active === false ? 0 : target.active
+    const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : target.name
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : target.phone
+    const recoveryEmail = typeof body.recovery_email === 'string' && body.recovery_email.trim() ? validEmail(body.recovery_email) : target.recovery_email
     const permissions = body.permissions === undefined ? safePermissions(target.permissions) : normalizePermissions(body.permissions)
-    db.prepare('UPDATE users SET active=?,permissions=? WHERE id=?').run(active, JSON.stringify(permissions), id)
+    db.prepare('UPDATE users SET name=?,phone=?,recovery_email=?,active=?,permissions=? WHERE id=?').run(name, phone, recoveryEmail, active, JSON.stringify(permissions), id)
     if (!active) db.prepare('DELETE FROM user_sessions WHERE user_id=?').run(id)
-    response.json({ ...target, active, permissions })
+    const current = currentUser(request, db)
+    if (current) logActivity(db, current.id, 'Updated User', 'User Management', `Updated account/permissions for ${name}`, request)
+    response.json({ ...target, name, phone, recovery_email: recoveryEmail, active, permissions })
+  })
+  app.get('/api/users/:id/activity', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT id,name,email,phone,recovery_email,role,active,created_at FROM users WHERE id=?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'User not found.')
+
+    const sessions = db.prepare(`
+      SELECT created_at AS login_time, last_active_at, device, ip_address, duration_seconds
+      FROM user_sessions
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 25
+    `).all(id) as (Row & { last_active_at?: string; duration_seconds?: number; device?: string })[]
+
+    const totalSeconds = sessions.reduce((acc, s) => acc + Number(s.duration_seconds || 0), 0)
+    const latestSession = sessions[0]
+    const isOnline = latestSession?.last_active_at ? (Date.now() - parseSqliteUtc(latestSession.last_active_at) < 5 * 60 * 1000) : false
+
+    const activities = db.prepare(`
+      SELECT id, action, module, description, device, ip_address, created_at
+      FROM user_activity_logs
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 100
+    `).all(id) as Row[]
+
+    const moduleCounts = db.prepare(`
+      SELECT module, COUNT(*) as count
+      FROM user_activity_logs
+      WHERE user_id = ?
+      GROUP BY module
+      ORDER BY count DESC
+    `).all(id) as { module: string; count: number }[]
+
+    response.json({
+      user: target,
+      isOnline,
+      currentDevice: latestSession?.device || 'Offline',
+      lastSeen: latestSession?.last_active_at || target.created_at,
+      totalDurationSeconds: totalSeconds,
+      sessions,
+      activities,
+      moduleCounts,
+    })
   })
   app.post('/api/users/:id/password', (request, response) => {
     const id = idParam(request)
@@ -401,6 +489,9 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(lead_code, name, client, source, stage, value, phone, email, site_address, work_type, notes)
 
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Created Lead', 'Leads', `Created lead ${lead_code}: ${name} (${Number(value).toLocaleString()} PKR)`, request)
+
     response.status(201).json(db.prepare('SELECT * FROM leads WHERE id = ?').get(result.lastInsertRowid))
   })
 
@@ -420,13 +511,19 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     db.prepare(`UPDATE leads SET stage = ?, source = ?, value = ?, name = ?, client = ?, notes = ? WHERE id = ?`)
       .run(stage, source, value, name, client, notes, id)
 
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Lead', 'Leads', `Updated lead ${target.lead_code} (Stage: ${stage})`, request)
+
     response.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(id))
   })
 
   app.delete('/api/leads/:id', (request, response) => {
     const id = idParam(request)
+    const target = db.prepare('SELECT lead_code, name FROM leads WHERE id = ?').get(id) as { lead_code?: string; name?: string } | undefined
     const result = db.prepare('DELETE FROM leads WHERE id = ?').run(id)
     if (!result.changes) throw new HttpError(404, 'Lead not found.')
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Lead', 'Leads', `Deleted lead ${target?.lead_code || `#${id}`}`, request)
     response.status(204).end()
   })
 
@@ -451,6 +548,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       db.prepare(`UPDATE leads SET stage = 'Awarded', project_id = ? WHERE id = ?`).run(result.lastInsertRowid, id)
       return Number(result.lastInsertRowid)
     })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Converted Lead', 'Leads', `Converted lead ${lead.lead_code} to project #${projectId}`, request)
     response.status(201).json(db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId))
   })
 
@@ -465,6 +564,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     }
     const result = db.prepare(`INSERT INTO projects (project_code,name,client,work_type,site_address,start_date,due_date,contract_amount,manager,status)
       VALUES (@project_code,@name,@client,@work_type,@site_address,@start_date,@due_date,@contract_amount,@manager,@status)`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Created Project', 'Projects', `Created project ${values.project_code}: ${values.name} (${Number(values.contract_amount).toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid))
   })
 
@@ -536,6 +637,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       for (const line of lines) insertLine.run(result.lastInsertRowid, line.category, line.description, line.amount)
       return db.prepare('SELECT * FROM project_budgets WHERE id=?').get(result.lastInsertRowid)
     })()
+    const currentUserObj = (response.locals.user as AuthUser | undefined) || currentUser(request, db)
+    if (currentUserObj) logActivity(db, currentUserObj.id, 'Created Budget', 'Project accounts', `Created budget v${(createBudget as any)?.version || 1} for project #${projectId} (${totalAmount.toLocaleString()} PKR)`, request)
     response.status(201).json(createBudget)
   })
 
@@ -543,6 +646,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const id = idParam(request)
     const result = db.prepare("UPDATE project_budgets SET status='Pending audit',submitted_at=CURRENT_TIMESTAMP WHERE id=? AND status='Draft'").run(id)
     if (!result.changes) throw new HttpError(409, 'Only a draft budget can be submitted. Create a new revision after rejection.')
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Submitted Budget', 'Project accounts', `Submitted project budget #${id} for audit`, request)
     response.json(db.prepare('SELECT * FROM project_budgets WHERE id=?').get(id))
   })
 
@@ -557,6 +662,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const result = db.prepare("UPDATE project_budgets SET status=?,audited_by=?,audit_date=?,audit_notes=? WHERE id=? AND status='Pending audit'")
       .run(decision, auditor, auditDate, optionalText(body, 'audit_notes'), id)
     if (!result.changes) throw new HttpError(409, 'Only a budget pending audit can be approved or rejected.')
+    const actUser = (response.locals.user as AuthUser | undefined) || currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, `${decision} Budget`, 'Project accounts', `${decision} budget #${id} (Auditor: ${auditor})`, request)
     response.json(db.prepare('SELECT * FROM project_budgets WHERE id=?').get(id))
   })
 
@@ -576,6 +683,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     }
     const result = db.prepare(`INSERT INTO employees (employee_code,full_name,job_title,department,phone,email,start_date,status,base_salary,housing_allowance,transport_allowance,other_allowance,monthly_bonus,overtime_multiplier,tax_rate,loan_balance,benefit_deduction,employer_contribution,notes)
       VALUES (@employee_code,@full_name,@job_title,@department,@phone,@email,@start_date,@status,@base_salary,@housing_allowance,@transport_allowance,@other_allowance,@monthly_bonus,@overtime_multiplier,@tax_rate,@loan_balance,@benefit_deduction,@employer_contribution,@notes)`).run(values)
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Added Employee', 'Employees', `Added employee ${values.employee_code}: ${values.full_name} (${values.job_title || 'Staff'})`, request)
     response.status(201).json(db.prepare('SELECT * FROM employees WHERE id = ?').get(result.lastInsertRowid))
   })
 
@@ -594,6 +703,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       db.prepare('UPDATE employees SET loan_balance = loan_balance + ? WHERE id = ?').run(principal, employeeId)
       return db.prepare('SELECT * FROM employee_loans WHERE id = ?').get(loan.lastInsertRowid)
     })()
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Issued Employee Loan', 'Employee loans', `Issued loan of ${principal.toLocaleString()} PKR to employee #${employeeId}`, request)
     response.status(201).json(result)
   })
 
@@ -621,12 +732,16 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       if (salary.loanDeduction > 0) applyLoanRepayment(db, employeeId, salary.loanDeduction, Number(payroll.lastInsertRowid), period)
       return db.prepare('SELECT * FROM payroll WHERE id = ?').get(payroll.lastInsertRowid)
     })()
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Processed Payroll', 'Payroll', `Processed payroll for ${employee.full_name} (${period}) - Net: ${salary.netSalary.toLocaleString()} PKR`, request)
     response.status(201).json(result)
   })
   app.post('/api/payroll/:id/mark-paid', (request, response) => {
     const body = objectBody(request)
     const result = db.prepare(`UPDATE payroll SET status='Paid', paid_date=? WHERE id=? AND status='Draft'`).run(requiredDate(body, 'paid_date'), idParam(request))
     if (!result.changes) throw new HttpError(404, 'Draft payroll run not found.')
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Disbursed Payroll', 'Payroll', `Marked payroll entry #${idParam(request)} as Paid`, request)
     response.json(db.prepare('SELECT * FROM payroll WHERE id = ?').get(idParam(request)))
   })
 
@@ -644,6 +759,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     if (values.salvage_value > values.purchase_cost) throw new HttpError(400, 'Salvage value cannot exceed purchase cost.')
     const result = db.prepare(`INSERT INTO assets (asset_code,name,category,make_model,serial_number,purchase_date,purchase_cost,condition,location,assigned_to,warranty_expiry,useful_life_years,salvage_value,notes)
       VALUES (@asset_code,@name,@category,@make_model,@serial_number,@purchase_date,@purchase_cost,@condition,@location,@assigned_to,@warranty_expiry,@useful_life_years,@salvage_value,@notes)`).run(values)
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Added Asset', 'Company assets', `Registered asset ${values.asset_code}: ${values.name} (${Number(values.purchase_cost).toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM assets WHERE id = ?').get(result.lastInsertRowid))
   })
   app.get('/api/assets/:id/maintenance', (request, response) => {
@@ -657,6 +774,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     if (vendorId) ensureExists(db, 'vendors', vendorId, 'Vendor')
     const result = db.prepare(`INSERT INTO asset_maintenance (asset_id,service_date,description,vendor_id,amount,next_service_date,reference_number,notes)
       VALUES (?,?,?,?,?,?,?,?)`).run(assetId, requiredDate(body, 'service_date'), requiredText(body, 'description'), vendorId ?? null, money(body, 'amount'), optionalDate(body, 'next_service_date'), optionalText(body, 'reference_number'), optionalText(body, 'notes'))
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Logged Maintenance', 'Company assets', `Logged maintenance for asset #${assetId}: ${requiredText(body, 'description')}`, request)
     response.status(201).json(db.prepare('SELECT * FROM asset_maintenance WHERE id=?').get(result.lastInsertRowid))
   })
 
@@ -671,6 +790,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     }
     const result = db.prepare(`INSERT INTO vendors (vendor_code,company_name,contact_name,trade,phone,email,address,tax_id,payment_terms,status,notes)
       VALUES (@vendor_code,@company_name,@contact_name,@trade,@phone,@email,@address,@tax_id,@payment_terms,@status,@notes)`).run(values)
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Added Vendor', 'Vendors', `Added vendor ${values.vendor_code}: ${values.company_name} (${values.trade || 'General'})`, request)
     response.status(201).json(db.prepare('SELECT * FROM vendors WHERE id = ?').get(result.lastInsertRowid))
   })
 
@@ -692,6 +813,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     if (retention > amount + taxAmount) throw new HttpError(400, 'Retention cannot exceed the work order total.')
     const result = db.prepare(`INSERT INTO work_orders (work_order_number,project_id,vendor_id,scope,issue_date,due_date,amount,tax_amount,retention_amount,status,notes)
       VALUES (@work_order_number,@project_id,@vendor_id,@scope,@issue_date,@due_date,@amount,@tax_amount,@retention_amount,@status,@notes)`).run(values)
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Issued Work Order', 'Sublet work orders', `Issued work order ${values.work_order_number} (${Number(values.amount).toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM work_orders WHERE id=?').get(result.lastInsertRowid))
   })
   app.post('/api/work-orders/:id/payments', (request, response) => {
@@ -710,6 +833,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       db.prepare('UPDATE work_orders SET paid_amount=?,status=? WHERE id=?').run(paid, status, workOrderId)
       return db.prepare('SELECT * FROM work_orders WHERE id=?').get(workOrderId)
     })()
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Subcontractor Payment', 'Sublet work orders', `Paid ${amount.toLocaleString()} PKR for work order #${workOrderId}`, request)
     response.status(201).json(result)
   })
 
@@ -744,6 +869,9 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       }
       return db.prepare('SELECT * FROM expenses WHERE id=?').get(id)
     })()
+    const actUser = currentUser(request, db)
+    const modName = values.expense_type === 'Project' ? 'Project expenses' : 'Office & general'
+    if (actUser) logActivity(db, actUser.id, 'Posted Expense', modName, `Posted ${values.expense_type.toLowerCase()} expense ${values.expense_number}: ${values.category} - ${values.description} (${(amount + taxAmount).toLocaleString()} PKR)`, request)
     response.status(201).json(result)
   })
   app.get('/api/expenses/:id/payments', (request, response) => {
@@ -766,6 +894,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       db.prepare('UPDATE expenses SET paid_amount=?,status=? WHERE id=?').run(paidAmount, status, id)
       return db.prepare('SELECT * FROM expense_payments WHERE id=?').get(payment.lastInsertRowid)
     })()
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Settled Expense', 'Expenses', `Paid ${amount.toLocaleString()} PKR towards expense #${id}`, request)
     response.status(201).json(result)
   })
 
@@ -824,6 +954,9 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       }))
       return Number(result.lastInsertRowid)
     })()
+    const actUser = currentUser(request, db)
+    const docMod = documentType === 'Estimate' ? 'Estimates' : 'Invoices'
+    if (actUser) logActivity(db, actUser.id, `Created ${documentType}`, docMod, `Created ${documentType.toLowerCase()} ${values.document_number} for ${values.client_name} (${values.grand_total.toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM documents WHERE id=?').get(createDocument))
   })
   app.patch('/api/documents/:id/audit', (request, response) => {
@@ -852,6 +985,9 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     }
     if (current.document_type === 'Invoice' && (status === 'Paid' || status === 'Partially paid') && status !== current.status) throw new HttpError(400, 'Record invoice payments through the payment ledger.')
     db.prepare('UPDATE documents SET status=? WHERE id=?').run(status, id)
+    const actUser = currentUser(request, db)
+    const docMod = current.document_type === 'Estimate' ? 'Estimates' : 'Invoices'
+    if (actUser) logActivity(db, actUser.id, `Updated ${current.document_type} Status`, docMod, `Changed ${current.document_number} status to ${status}`, request)
     response.json(db.prepare('SELECT * FROM documents WHERE id=?').get(id))
   })
   app.post('/api/documents/:id/convert-to-project', (request, response) => {
@@ -866,6 +1002,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       db.prepare(`UPDATE documents SET status='Converted',project_id=? WHERE id=?`).run(result.lastInsertRowid, id)
       return Number(result.lastInsertRowid)
     })()
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Converted Estimate', 'Estimates', `Converted estimate ${estimate.document_number} into project #${projectId}`, request)
     response.status(201).json(db.prepare('SELECT * FROM projects WHERE id=?').get(projectId))
   })
   app.post('/api/documents/:id/payments', (request, response) => {
@@ -886,6 +1024,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       db.prepare('UPDATE documents SET status=? WHERE id=?').run(newStatus, id)
       return db.prepare('SELECT * FROM payments WHERE id=?').get(result.lastInsertRowid)
     })()
+    const actUser = currentUser(request, db)
+    if (actUser) logActivity(db, actUser.id, 'Received Client Payment', 'Invoices', `Recorded receipt of ${amount.toLocaleString()} PKR for invoice ${document.document_number}`, request)
     response.status(201).json(payment)
   })
 
@@ -945,11 +1085,48 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
   return app
 }
 
-function sendSession(db: Db, userId: number, response: Response) {
-  const token = createSession(db, userId)
-  const user = getSessionUser(db, token)
+function sendSession(db: Db, userId: number, response: Response, meta: { ip?: string; device?: string } = {}) {
+  const token = createSession(db, userId, meta)
+  const user = getSessionUser(db, token, false)
   response.setHeader('Set-Cookie', sessionCookie(token, 12 * 60 * 60))
   response.json({ ...user, token })
+}
+
+function parseDevice(request: Request): string {
+  const ua = (request.headers['user-agent'] || '').toLowerCase()
+  let os = 'PC / Desktop'
+  if (/iphone/.test(ua)) os = 'iPhone'
+  else if (/ipad/.test(ua)) os = 'iPad'
+  else if (/android/.test(ua)) os = 'Android Mobile'
+  else if (/macintosh|mac os/.test(ua)) os = 'Mac / MacBook'
+  else if (/windows/.test(ua)) os = 'Windows PC'
+  else if (/linux/.test(ua)) os = 'Linux PC'
+
+  let browser = 'Browser'
+  if (/edg\//.test(ua)) browser = 'Edge'
+  else if (/chrome\//.test(ua)) browser = 'Chrome'
+  else if (/safari\//.test(ua) && !/chrome\//.test(ua)) browser = 'Safari'
+  else if (/firefox\//.test(ua)) browser = 'Firefox'
+
+  return `${os} · ${browser}`
+}
+
+function parseIp(request: Request): string {
+  return ((request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.socket.remoteAddress || '').replace(/^::ffff:/, '')
+}
+
+function logActivity(db: Db, userId: number, action: string, module: string, description: string, request?: Request) {
+  try {
+    const user = db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name?: string } | undefined
+    const device = request ? parseDevice(request) : ''
+    const ip = request ? parseIp(request) : ''
+    db.prepare(`
+      INSERT INTO user_activity_logs (user_id, user_name, action, module, description, device, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, user?.name || 'User', action, module, description, device, ip)
+  } catch (err) {
+    console.error('Failed to log activity:', err)
+  }
 }
 
 function sessionCookie(token: string, maxAge: number) {
@@ -977,7 +1154,7 @@ function validEmail(value: unknown): string {
 }
 
 function validPassword(value: unknown): string {
-  if (typeof value !== 'string' || value.length < 10 || value.length > 128) throw new HttpError(400, 'Password must be between 10 and 128 characters.')
+  if (typeof value !== 'string' || value.length < 8 || value.length > 128) throw new HttpError(400, 'Password must be between 8 and 128 characters.')
   return value
 }
 

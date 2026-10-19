@@ -69,7 +69,7 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
       const response = await fetch(`/api/auth/${setupRequired ? 'setup' : 'login'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(setupRequired ? { name, email, password } : { email, password }),
+        body: JSON.stringify(setupRequired ? { name, email: email.trim(), password } : { email: email.trim(), identifier: email.trim(), password }),
       })
       const result = await response.json() as AuthUser & { error?: string }
       if (!response.ok) throw new Error(result.error || 'Could not sign in.')
@@ -195,8 +195,15 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
               </label>
             )}
             <label>
-              <span>Work email</span>
-              <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+              <span>{setupRequired ? 'Work email' : 'Work email, phone, or name'}</span>
+              <input
+                type="text"
+                autoComplete="username"
+                placeholder={setupRequired ? 'admin@company.com' : 'email@company.com, 0300..., or name'}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
             </label>
             <label>
               <div className="auth-field-header">
@@ -219,7 +226,7 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
                 <input
                   type={showPassword ? 'text' : 'password'}
                   autoComplete={setupRequired ? 'new-password' : 'current-password'}
-                  minLength={10}
+                  minLength={8}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
@@ -235,7 +242,7 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <small>At least 10 characters</small>
+              <small>At least 8 characters</small>
             </label>
             {error && <div className="auth-error" role="alert">{error}</div>}
             <button className="auth-submit" disabled={saving || googleLoading}>

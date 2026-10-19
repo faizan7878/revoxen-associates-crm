@@ -210,6 +210,27 @@ export function openDatabase(filename?: string): Db {
   ensureColumn(db, 'users', 'recovery_email', "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, 'users', 'reset_code', "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, 'users', 'reset_expires', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'user_sessions', 'last_active_at', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'user_sessions', 'ip_address', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'user_sessions', 'device', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'user_sessions', 'duration_seconds', "INTEGER NOT NULL DEFAULT 0")
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_name TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL,
+      module TEXT NOT NULL,
+      description TEXT NOT NULL,
+      device TEXT NOT NULL DEFAULT '',
+      ip_address TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_user ON user_activity_logs(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_activity_created ON user_activity_logs(created_at);
+  `)
+
   db.prepare(`UPDATE users SET phone = '+92 300 5550199', recovery_email = 'faizeawan123@gmail.com' WHERE id = 1 AND (phone = '' OR recovery_email = '')`).run()
 
   if (dbPath !== ':memory:') {

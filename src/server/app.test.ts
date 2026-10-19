@@ -280,4 +280,58 @@ describe('authentication and access control', () => {
     const loginRes = await request(app).post('/api/auth/login').send({ email: 'admin@example.com', password: 'new-secure-password-2026' })
     expect(loginRes.status).toBe(200)
   })
+
+  it('allows user login via phone or name and logs working activities with session details', async () => {
+    const admin = request.agent(app)
+    await admin.post('/api/auth/setup').send({ name: 'Revoxen Admin', email: 'admin@example.com', password: 'admin-password-123' })
+
+    // Create user with phone and lead permissions
+    const createRes = await admin.post('/api/users').send({
+      name: 'Faizan Staff',
+      email: 'staff@example.com',
+      phone: '+92 321 9876543',
+      password: 'staff-secure-password',
+      permissions: { leads: { view: true, edit: true } },
+    })
+    expect(createRes.status).toBe(201)
+    const staffId = createRes.body.id
+
+    // User logs in using phone number from a mobile device user-agent
+    const staffClient = request.agent(app)
+    const phoneLogin = await staffClient.post('/api/auth/login')
+      .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')
+      .send({ identifier: '03219876543', password: 'staff-secure-password' })
+    expect(phoneLogin.status).toBe(200)
+    expect(phoneLogin.body.name).toBe('Faizan Staff')
+
+    // User performs an action: creates a lead
+    const leadRes = await staffClient.post('/api/leads')
+      .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')
+      .send({
+        name: 'Luxury Residence Villa',
+        client: 'Tariq Mehmood',
+        source: 'Website Enquiries',
+        stage: 'Qualified',
+        value: 12500000,
+      })
+    expect(leadRes.status).toBe(201)
+
+    // Send heartbeat to touch session
+    const heartbeat = await staffClient.post('/api/auth/heartbeat')
+    expect(heartbeat.status).toBe(200)
+
+    // Admin checks user activity endpoint
+    const activityRes = await admin.get(`/api/users/${staffId}/activity`)
+    expect(activityRes.status).toBe(200)
+    expect(activityRes.body.user.name).toBe('Faizan Staff')
+    expect(activityRes.body.isOnline).toBe(true)
+    expect(activityRes.body.currentDevice).toContain('iPhone')
+    expect(activityRes.body.activities.length).toBeGreaterThanOrEqual(2) // Sign In + Created Lead
+
+    const leadActivity = activityRes.body.activities.find((a: any) => a.action === 'Created Lead')
+    expect(leadActivity).toBeDefined()
+    expect(leadActivity.module).toBe('Leads')
+    expect(leadActivity.description).toContain('Luxury Residence Villa')
+    expect(leadActivity.device).toContain('iPhone')
+  })
 })

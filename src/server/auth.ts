@@ -42,19 +42,36 @@ export function verifyPassword(password: string, stored: string): boolean {
   return timingSafeEqual(actual, expected)
 }
 
-export function createSession(db: Db, userId: number): string {
+export function parseSqliteUtc(str?: string): number {
+  if (!str) return 0
+  const normalized = str.includes('Z') || str.includes('+') ? str : `${str.replace(' ', 'T')}Z`
+  const ms = Date.parse(normalized)
+  return isNaN(ms) ? Date.parse(str) : ms
+}
+
+export function createSession(db: Db, userId: number, meta: { ip?: string; device?: string } = {}): string {
   const token = randomBytes(32).toString('base64url')
+  const nowIso = new Date().toISOString()
   const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
-  db.prepare('INSERT INTO user_sessions (token_hash,user_id,expires_at) VALUES (?,?,?)').run(hashToken(token), userId, expiresAt)
+  db.prepare('INSERT INTO user_sessions (token_hash,user_id,expires_at,last_active_at,ip_address,device) VALUES (?,?,?,?,?,?)')
+    .run(hashToken(token), userId, expiresAt, nowIso, meta.ip || '', meta.device || '')
   return token
 }
 
-export function getSessionUser(db: Db, token: string): AuthUser | undefined {
-  const row = db.prepare(`SELECT u.id,u.name,u.email,u.role,u.active,u.permissions,s.expires_at
-    FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`).get(hashToken(token)) as (UserRow & { expires_at: string }) | undefined
-  if (!row || !row.active || Date.parse(row.expires_at) <= Date.now()) {
-    if (row) db.prepare('DELETE FROM user_sessions WHERE token_hash=?').run(hashToken(token))
+export function getSessionUser(db: Db, token: string, touch = true): AuthUser | undefined {
+  const tokenH = hashToken(token)
+  const row = db.prepare(`SELECT u.id,u.name,u.email,u.role,u.active,u.permissions,s.expires_at,s.created_at,s.last_active_at
+    FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`).get(tokenH) as (UserRow & { expires_at: string; created_at: string; last_active_at: string }) | undefined
+  if (!row || !row.active || parseSqliteUtc(row.expires_at) <= Date.now()) {
+    if (row) db.prepare('DELETE FROM user_sessions WHERE token_hash=?').run(tokenH)
     return undefined
+  }
+  if (touch) {
+    const now = Date.now()
+    const lastActive = row.last_active_at ? parseSqliteUtc(row.last_active_at) : now
+    const deltaSeconds = Math.min(Math.max(0, Math.round((now - lastActive) / 1000)), 300)
+    db.prepare('UPDATE user_sessions SET last_active_at = ?, duration_seconds = duration_seconds + ? WHERE token_hash = ?')
+      .run(new Date(now).toISOString(), deltaSeconds, tokenH)
   }
   return toAuthUser(row)
 }

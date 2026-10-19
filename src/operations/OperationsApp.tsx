@@ -231,6 +231,14 @@ function OperationsApp() {
     const task = window.setTimeout(() => { void loadData() }, 0)
     return () => window.clearTimeout(task)
   }, [loadData, user])
+  // Track user presence and session duration in real time
+  useEffect(() => {
+    if (!user) return
+    const interval = window.setInterval(() => {
+      fetch('/api/auth/heartbeat', { method: 'POST' }).catch(() => {})
+    }, 45000)
+    return () => window.clearInterval(interval)
+  }, [user])
   useEffect(() => {
     if (!toast) return
     const timer = window.setTimeout(() => setToast(''), 3500)
