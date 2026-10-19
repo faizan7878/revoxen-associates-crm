@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import {
-  Activity, ArrowRight, CheckCircle2, ChevronRight, Clock,
-  Eye, EyeOff, KeyRound, Laptop, LockKeyhole, Monitor, Plus,
-  RefreshCw, Save, ShieldCheck, Smartphone, Sparkles, UserCheck,
+  Activity, Clock,
+  Eye, EyeOff, KeyRound, Laptop, LockKeyhole, Monitor,
+  RefreshCw, Save, ShieldCheck, Smartphone, Sparkles,
   UserRoundPlus, Users, X,
 } from 'lucide-react'
 

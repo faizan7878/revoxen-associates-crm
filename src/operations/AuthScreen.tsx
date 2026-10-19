@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent, type SyntheticEvent } from 'react'
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff,
   KeyRound, LockKeyhole, ShieldCheck,
@@ -43,22 +43,26 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
     const code = params.get('code')
     if (!code) return
     window.history.replaceState({}, '', window.location.pathname)
-    setGoogleLoading(true)
-    setError('')
-    fetch('/api/auth/google/callback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    })
-      .then(async (res) => {
+
+    const exchangeCode = async () => {
+      setGoogleLoading(true)
+      setError('')
+      try {
+        const res = await fetch('/api/auth/google/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        })
         const result = await res.json() as AuthUser & { error?: string }
         if (!res.ok) throw new Error(result.error || 'Google sign-in failed.')
         onAuthenticated(result)
-      })
-      .catch((problem) => {
+      } catch (problem) {
         setError(problem instanceof Error ? problem.message : 'Google sign-in failed.')
         setGoogleLoading(false)
-      })
+      }
+    }
+
+    void exchangeCode()
   }, [onAuthenticated])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -79,8 +83,8 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
     } finally { setSaving(false) }
   }
 
-  const handleRequestCode = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const handleRequestCode = async (event?: SyntheticEvent) => {
+    event?.preventDefault()
     setError('')
     setSuccessMessage('')
     setSaving(true)
@@ -303,6 +307,13 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
           <span className="auth-kicker">VERIFICATION</span>
           <h2>Reset password</h2>
           <p>We verified your account. Enter the 6-digit code and choose a new password.</p>
+
+          {successMessage && (
+            <div className="auth-success" role="status" style={{ padding: '8px 12px', color: '#166534', fontSize: '11px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '4px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <CheckCircle2 size={14} />
+              <span>{successMessage}</span>
+            </div>
+          )}
 
           {demoCode && (
             <div className="auth-code-badge">
