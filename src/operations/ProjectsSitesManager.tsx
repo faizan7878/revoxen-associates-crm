@@ -2,7 +2,7 @@ import { useState, useMemo, type FormEvent } from 'react'
 import {
   BriefcaseBusiness, HardHat, FileText, CheckSquare,
   Calculator, ShieldAlert, Award, ArrowRightLeft, Plus,
-  Check, AlertTriangle, AlertCircle, RefreshCw, XCircle
+  Check, AlertTriangle, AlertCircle, RefreshCw, XCircle, X
 } from 'lucide-react'
 import './lead-tracking.css'
 
@@ -142,9 +142,7 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
 
   // 1. Projects Portfolio State & Module 1 Alerts
   const [projectsArray] = useState<ProjectPortfolioItem[]>(initialProjects)
-  const [criticalAlerts, setCriticalAlerts] = useState<string[]>([
-    'Delayed cement trailer arrival reported on Basements.',
-  ])
+  const [criticalAlerts, setCriticalAlerts] = useState<string[]>([])
 
   // 2. Site Allocation State
   const [siteAllocations, setSiteAllocations] = useState<SiteAllocationItem[]>(initialSiteAllocations)
@@ -433,19 +431,41 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                 border: '1px solid #fecdd3',
                 color: '#9f1239',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: '6px',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: '12px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                <AlertCircle size={16} />
-                <span>Critical Alerts Flagged for Portfolio Management:</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                  <AlertCircle size={16} />
+                  <span>Site Blocker Notifications (from DPR):</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '22px', fontSize: '12px' }}>
+                  {criticalAlerts.map((alert, idx) => (
+                    <li key={idx}>{alert}</li>
+                  ))}
+                </ul>
               </div>
-              <ul style={{ margin: 0, paddingLeft: '22px', fontSize: '12px' }}>
-                {criticalAlerts.map((alert, idx) => (
-                  <li key={idx}>{alert}</li>
-                ))}
-              </ul>
+              <button
+                type="button"
+                onClick={() => setCriticalAlerts([])}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#9f1239',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 6px',
+                }}
+                title="Dismiss alerts"
+              >
+                <X size={14} /> Dismiss
+              </button>
             </div>
           )}
 
