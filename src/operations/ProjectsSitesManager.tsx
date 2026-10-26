@@ -296,10 +296,11 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
   // ==========================================================================
   // 6. Logic: HSE/QA PPE Audit Validation & Health Indicator ("Warning")
   // ==========================================================================
-  const projectHealthStatus = useMemo(() => {
-    const allPpeCompliant = Object.values(ppeCompliance).every(Boolean)
-    return allPpeCompliant ? 'Compliant / Normal' : 'Warning'
+  const isWarning = useMemo(() => {
+    return !Object.values(ppeCompliance).every(Boolean)
   }, [ppeCompliance])
+
+  const projectHealthStatus = isWarning ? 'Warning' : 'Safe'
 
   const togglePpeCheck = (key: keyof typeof ppeCompliance) => {
     setPpeCompliance((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -393,9 +394,9 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
             <span
               className="lst-tab-badge"
               style={{
-                color: projectHealthStatus === 'Warning' ? '#b91c1c' : '#15803d',
-                borderColor: projectHealthStatus === 'Warning' ? '#fca5a5' : '#86efac',
-                background: projectHealthStatus === 'Warning' ? '#fef2f2' : '#f0fdf4',
+                color: isWarning ? '#b91c1c' : '#15803d',
+                borderColor: isWarning ? '#fca5a5' : '#86efac',
+                background: isWarning ? '#fef2f2' : '#f0fdf4',
               }}
             >
               {projectHealthStatus}
@@ -447,39 +448,61 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
             </div>
           )}
 
+          {/* Continuous text or block binding for formula block */}
+          <div
+            style={{
+              padding: '10px 14px',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#0f172a',
+              fontSize: '12px',
+              fontWeight: 600,
+            }}
+          >
+            <Calculator size={15} color="#2563eb" style={{ flexShrink: 0 }} />
+            <span>Portfolio Dynamic Cost Variance Calculator: Cost Variance = Total Budget - Total Spent</span>
+          </div>
+
           {/* Absolute Calculator Block: TotalBudget - TotalSpent */}
           <div className="lst-formula-widget">
-            <div className="lst-formula-header">
-              <span className="lst-formula-title">
-                <Calculator size={15} color="#2563eb" />
-                Portfolio Dynamic Cost Variance Calculator
+            <div className="lst-formula-box">
+              <span className="lst-formula-label">Total Contract Budget</span>
+              <span className="lst-formula-value">{fmtPKR(portfolioVariance.totalBudget)}</span>
+              <span className="lst-formula-sub">Sum of all active project budgets</span>
+            </div>
+            <div className="lst-formula-box">
+              <span className="lst-formula-label">Total Costs Spent to Date</span>
+              <span className="lst-formula-value" style={{ color: '#b91c1c' }}>
+                {fmtPKR(portfolioVariance.totalSpent)}
               </span>
-              <span className="lst-formula-badge">
-                Cost Variance = Total Budget − Total Spent
+              <span className="lst-formula-sub">Actual site expenses disbursed</span>
+            </div>
+            <div className="lst-formula-box highlight">
+              <span className="lst-formula-label">Total Cost Variance</span>
+              <span
+                className="lst-formula-value"
+                style={{
+                  color: portfolioVariance.variance >= 0 ? '#15803d' : '#b91c1c',
+                }}
+              >
+                {fmtPKR(portfolioVariance.variance)}
+              </span>
+              <span className="lst-formula-sub">
+                {portfolioVariance.variance >= 0 ? 'Favorable savings variance' : 'Cost overrun warning'}
               </span>
             </div>
-            <div className="lst-formula-grid">
-              <div className="lst-formula-item">
-                <span className="lst-formula-lbl">Total Contract Budget</span>
-                <strong className="lst-formula-val">{fmtPKR(portfolioVariance.totalBudget)}</strong>
-              </div>
-              <div className="lst-formula-item">
-                <span className="lst-formula-lbl">Total Costs Spent to Date</span>
-                <strong className="lst-formula-val" style={{ color: '#b91c1c' }}>
-                  {fmtPKR(portfolioVariance.totalSpent)}
-                </strong>
-              </div>
-              <div className="lst-formula-item">
-                <span className="lst-formula-lbl">Total Cost Variance (Savings)</span>
-                <strong
-                  className="lst-formula-val"
-                  style={{
-                    color: portfolioVariance.variance >= 0 ? '#15803d' : '#b91c1c',
-                  }}
-                >
-                  {fmtPKR(portfolioVariance.variance)}
-                </strong>
-              </div>
+            <div className="lst-formula-box">
+              <span className="lst-formula-label">Portfolio Variance Ratio</span>
+              <span className="lst-formula-value">
+                {portfolioVariance.totalBudget > 0
+                  ? `${((portfolioVariance.variance / portfolioVariance.totalBudget) * 100).toFixed(1)}%`
+                  : '0%'}
+              </span>
+              <span className="lst-formula-sub">Net portfolio budget margin</span>
             </div>
           </div>
 
@@ -926,27 +949,36 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
       {activeTab === 'boq' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* Top Global BOQ Dynamic Sum Display */}
+          <div
+            style={{
+              padding: '10px 14px',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#0f172a',
+              fontSize: '12px',
+              fontWeight: 600,
+            }}
+          >
+            <Calculator size={15} color="#2563eb" style={{ flexShrink: 0 }} />
+            <span>Dynamic Global BOQ Total Sum: Total = ∑ (Qty × Unit Rate)</span>
+          </div>
+
           <div className="lst-formula-widget">
-            <div className="lst-formula-header">
-              <span className="lst-formula-title">
-                <Calculator size={15} color="#2563eb" />
-                Dynamic Global BOQ Total Sum (Optimized Calculation Loop)
-              </span>
-              <span className="lst-formula-badge">
-                Total = ∑ (Qty × Unit Rate)
-              </span>
+            <div className="lst-formula-box">
+              <span className="lst-formula-label">Total BOQ Line Items</span>
+              <span className="lst-formula-value">{boqMaster.length} Items</span>
+              <span className="lst-formula-sub">Active bill of quantities line items</span>
             </div>
-            <div className="lst-formula-grid">
-              <div className="lst-formula-item">
-                <span className="lst-formula-lbl">Total BOQ Line Items</span>
-                <strong className="lst-formula-val">{boqMaster.length} Items</strong>
-              </div>
-              <div className="lst-formula-item">
-                <span className="lst-formula-lbl">Global BOQ Total Valuation</span>
-                <strong className="lst-formula-val" style={{ color: '#2563eb', fontSize: '20px' }}>
-                  {fmtPKR(boqCalculations.totalBoqSum)}
-                </strong>
-              </div>
+            <div className="lst-formula-box highlight">
+              <span className="lst-formula-label">Global BOQ Total Valuation</span>
+              <span className="lst-formula-value" style={{ color: '#2563eb' }}>
+                {fmtPKR(boqCalculations.totalBoqSum)}
+              </span>
+              <span className="lst-formula-sub">Calculated via optimized loop</span>
             </div>
           </div>
 
@@ -1063,41 +1095,32 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
       {/* ================================================================== */}
       {activeTab === 'hse' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* Health Status Indicator Banner */}
-          <div
-            style={{
-              padding: '14px 18px',
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: projectHealthStatus === 'Warning' ? '#fff7ed' : '#f0fdf4',
-              border: `1px solid ${projectHealthStatus === 'Warning' ? '#fdba74' : '#86efac'}`,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {projectHealthStatus === 'Warning' ? (
+          {/* Health Status Indicator Banner - Only renders if at least one checkbox is false */}
+          {isWarning && (
+            <div
+              style={{
+                padding: '14px 18px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#fff7ed',
+                border: '1px solid #fdba74',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <AlertTriangle size={20} color="#c2410c" />
-              ) : (
-                <Check size={20} color="#15803d" />
-              )}
-              <div>
-                <strong
-                  style={{
-                    fontSize: '14px',
-                    color: projectHealthStatus === 'Warning' ? '#9a3412' : '#14532d',
-                  }}
-                >
-                  Project Health Status: {projectHealthStatus.toUpperCase()}
-                </strong>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-                  {projectHealthStatus === 'Warning'
-                    ? 'Automated HSE Alert: One or more critical PPE requirements are not compliant on site.'
-                    : 'All mandatory site PPE protocols verified compliant across active shifts.'}
-                </p>
+                <div>
+                  <strong style={{ fontSize: '14px', color: '#9a3412' }}>
+                    Project Health Status: WARNING
+                  </strong>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Automated HSE Alert: One or more critical PPE requirements are not compliant on site.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* PPE Compliance Audit Checklist */}
           <div className="lst-card">
