@@ -382,7 +382,7 @@ interface LeadSourceTrackingProps {
   canEdit?: boolean
 }
 
-export default function LeadSourceTracking({ onNavigate: _onNavigate, onSwitchToOperations, leadsData: _leadsData, canEdit = true }: LeadSourceTrackingProps) {
+export default function LeadSourceTracking({ onNavigate, onSwitchToOperations, leadsData: _leadsData, canEdit = true }: LeadSourceTrackingProps) {
   // Navigation & View State
   const [activeTab, setActiveTab] = useState<SubModuleTab>('sourcing')
   const [currency, setCurrency] = useState<'USD' | 'PKR'>('USD')
