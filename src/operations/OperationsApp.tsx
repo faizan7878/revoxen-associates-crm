@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
+import ProjectsSitesManager from './ProjectsSitesManager'
 import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import './operations.css'
@@ -306,15 +307,16 @@ function OperationsApp() {
       <header className="ops-topbar"><div className="ops-crumb"><button className="ops-icon-button ops-mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={18} /></button><span>REVOXEN</span><i>/</i><strong>{config.title}</strong></div><div className="ops-top-actions"><label className="ops-search"><Search size={15} /><input id="ops-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search records..." /><kbd>⌘ K</kbd></label><button className="ops-icon-button ops-bell" aria-label="Notifications" onClick={() => notify('No new alerts.')}><Bell size={17} /></button><span className="ops-top-avatar">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span></div></header>
       <div className="ops-content">
         {error && <div className="ops-error"><span><X size={15} />{error}</span><button onClick={() => void loadData(true)}>Retry</button></div>}
-        <div className="ops-heading"><div><div className="ops-eyebrow"><span />{module === 'profitLoss' ? `${periodMode === 'month' ? period : year} · FINANCIAL CONTROL` : `${currentDate.toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()} · REVOXEN ASSOCIATES`}</div><h1>{config.title}</h1><p>{config.subtitle}</p></div><div className="ops-heading-actions">{module !== 'profitLoss' && module !== 'users' && <button className="ops-outline-button" onClick={() => void loadData(true)} aria-label="Refresh records"><Activity size={15} />{refreshing ? 'Syncing...' : 'Refresh'}</button>}{config.add && module !== 'leads' && canEdit(module) && <button className="ops-red-button" onClick={() => openDialog(module === 'payroll' ? 'payroll' : module === 'loans' ? 'employeeLoan' : module as EntryModule)}><Plus size={16} />{config.add}</button>}</div></div>
+        <div className="ops-heading"><div><div className="ops-eyebrow"><span />{module === 'profitLoss' ? `${periodMode === 'month' ? period : year} · FINANCIAL CONTROL` : `${currentDate.toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()} · REVOXEN ASSOCIATES`}</div><h1>{config.title}</h1><p>{config.subtitle}</p></div><div className="ops-heading-actions">{module !== 'profitLoss' && module !== 'users' && <button className="ops-outline-button" onClick={() => void loadData(true)} aria-label="Refresh records"><Activity size={15} />{refreshing ? 'Syncing...' : 'Refresh'}</button>}{config.add && module !== 'leads' && module !== 'projects' && canEdit(module) && <button className="ops-red-button" onClick={() => openDialog(module === 'payroll' ? 'payroll' : module === 'loans' ? 'employeeLoan' : module as EntryModule)}><Plus size={16} />{config.add}</button>}</div></div>
         {loading && <div className="ops-loading"><span className="ops-spinner" />Loading company records…</div>}
         {!loading && module === 'dashboard' && <Dashboard data={companyData} finance={finance} onNavigate={changeModule} period={period} setPeriod={setPeriod} canView={canView} canEdit={canEdit} />}
         {!loading && module === 'leads' && <LeadSourceTracking onNavigate={changeModule} leadsData={companyData.leads} canEdit={canEdit('leads')} />}
+        {!loading && module === 'projects' && <ProjectsSitesManager search={search} canEdit={canEdit('projects')} />}
         {!loading && module === 'profitLoss' && <ProfitLoss finance={finance} period={period} setPeriod={setPeriod} year={year} setYear={setYear} periodMode={periodMode} setPeriodMode={setPeriodMode} />}
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
         {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
-        {!loading && !['dashboard', 'leads', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable
+        {!loading && !['dashboard', 'leads', 'projects', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable
           module={module}
           data={companyData}
           search={search}
