@@ -9,6 +9,7 @@ import {
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
 import LeadsPipelineManager from './LeadsPipelineManager'
+import CrmSalesManager from './CrmSalesManager'
 import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import './operations.css'
@@ -315,10 +316,11 @@ function OperationsApp() {
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
         {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
         {!loading && module === 'leads' && (
-          <LeadsPipelineManager
+          <CrmSalesManager
             canEdit={canEdit('leads')}
             companyLeads={companyData.leads}
             onRefresh={() => loadData(true)}
+            onNotify={notify}
             rawTableComponent={
               <ModuleTable
                 module="leads"
