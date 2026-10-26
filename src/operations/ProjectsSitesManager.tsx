@@ -4,6 +4,7 @@ import {
   Calculator, ShieldAlert, Award, ArrowRightLeft, Plus,
   Check, AlertTriangle, AlertCircle, RefreshCw, XCircle
 } from 'lucide-react'
+import './lead-tracking.css'
 
 // ============================================================================
 // Types
@@ -178,7 +179,7 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
     hardHats: true,
     safetyBoots: true,
     hiVisVests: true,
-    eyeProtection: false, // Default one false to demonstrate Warning trigger
+    eyeProtection: true, // Default compliant (Safe)
     fallHarness: true,
   })
 
@@ -333,7 +334,7 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Dynamic Sub-Navigation Bar for the 7 Links */}
       <nav className="lst-subnav-container" aria-label="Projects and Sites Modules">
-        <div className="lst-subnav-tabs">
+        <div className="lst-subnav-tabs" style={{ flexWrap: 'wrap', gap: '8px' }}>
           <button
             type="button"
             className={`lst-subnav-tab ${activeTab === 'portfolio' ? 'active' : ''}`}
@@ -1135,7 +1136,11 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
             </div>
 
             <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-              <label
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => togglePpeCheck('hardHats')}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') togglePpeCheck('hardHats') }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1145,20 +1150,26 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                   border: '1px solid #e2e8f0',
                   background: ppeCompliance.hardHats ? '#f8fafc' : '#fef2f2',
                   cursor: 'pointer',
+                  userSelect: 'none',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={ppeCompliance.hardHats}
                   onChange={() => togglePpeCheck('hardHats')}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <div>
                   <strong style={{ display: 'block', fontSize: '13px' }}>Hard Hats (EN 397)</strong>
                   <small style={{ color: '#64748b' }}>100% field crew coverage</small>
                 </div>
-              </label>
+              </div>
 
-              <label
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => togglePpeCheck('safetyBoots')}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') togglePpeCheck('safetyBoots') }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1168,20 +1179,26 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                   border: '1px solid #e2e8f0',
                   background: ppeCompliance.safetyBoots ? '#f8fafc' : '#fef2f2',
                   cursor: 'pointer',
+                  userSelect: 'none',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={ppeCompliance.safetyBoots}
                   onChange={() => togglePpeCheck('safetyBoots')}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <div>
                   <strong style={{ display: 'block', fontSize: '13px' }}>Steel-Toe Boots (S3)</strong>
                   <small style={{ color: '#64748b' }}>Puncture-proof sole</small>
                 </div>
-              </label>
+              </div>
 
-              <label
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => togglePpeCheck('hiVisVests')}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') togglePpeCheck('hiVisVests') }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1191,20 +1208,26 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                   border: '1px solid #e2e8f0',
                   background: ppeCompliance.hiVisVests ? '#f8fafc' : '#fef2f2',
                   cursor: 'pointer',
+                  userSelect: 'none',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={ppeCompliance.hiVisVests}
                   onChange={() => togglePpeCheck('hiVisVests')}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <div>
                   <strong style={{ display: 'block', fontSize: '13px' }}>Hi-Vis Reflective Vests</strong>
                   <small style={{ color: '#64748b' }}>Class 2 day/night visibility</small>
                 </div>
-              </label>
+              </div>
 
-              <label
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => togglePpeCheck('eyeProtection')}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') togglePpeCheck('eyeProtection') }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1214,12 +1237,14 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                   border: '1px solid #e2e8f0',
                   background: ppeCompliance.eyeProtection ? '#f8fafc' : '#fef2f2',
                   cursor: 'pointer',
+                  userSelect: 'none',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={ppeCompliance.eyeProtection}
                   onChange={() => togglePpeCheck('eyeProtection')}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <div>
                   <strong style={{ display: 'block', fontSize: '13px' }}>Eye / Welding Protection</strong>
@@ -1227,9 +1252,13 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                     {ppeCompliance.eyeProtection ? 'Verified active' : 'Deficiency reported!'}
                   </small>
                 </div>
-              </label>
+              </div>
 
-              <label
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => togglePpeCheck('fallHarness')}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') togglePpeCheck('fallHarness') }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1239,18 +1268,20 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                   border: '1px solid #e2e8f0',
                   background: ppeCompliance.fallHarness ? '#f8fafc' : '#fef2f2',
                   cursor: 'pointer',
+                  userSelect: 'none',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={ppeCompliance.fallHarness}
                   onChange={() => togglePpeCheck('fallHarness')}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <div>
                   <strong style={{ display: 'block', fontSize: '13px' }}>Fall Arrest Harnesses</strong>
                   <small style={{ color: '#64748b' }}>Working over 2m height</small>
                 </div>
-              </label>
+              </div>
             </div>
           </div>
 
