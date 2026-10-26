@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
+import LeadsPipelineManager from './LeadsPipelineManager'
 import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import './operations.css'
@@ -313,7 +314,38 @@ function OperationsApp() {
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
         {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
-        {!loading && !['dashboard', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable
+        {!loading && module === 'leads' && (
+          <LeadsPipelineManager
+            canEdit={canEdit('leads')}
+            companyLeads={companyData.leads}
+            onRefresh={() => loadData(true)}
+            rawTableComponent={
+              <ModuleTable
+                module="leads"
+                data={companyData}
+                search={search}
+                editable={canEdit('leads')}
+                canEdit={canEdit}
+                onAddNew={() => openDialog('leads')}
+                onEdit={(id) => openDialog('leads', id)}
+                onDelete={(ids) => handleDeleteRecords('leads', ids)}
+                onNotify={notify}
+                onPayment={(type, id) => openDialog(type, id)}
+                onLoan={() => openDialog('employeeLoan')}
+                onAssetMaintenance={(id) => openDialog('assetMaintenance', id)}
+                onInvoiceAudit={(id) => openDialog('invoiceAudit', id)}
+                onExpensePayment={(id) => openDialog('expensePayment', id)}
+                onLeadAdvance={async (id, currentStage) => { const stages = ['Lead Source', 'Qualified', 'Site Visit', 'Estimate / Bid', 'Proposal', 'Awarded']; const nextStage = stages[Math.min(stages.indexOf(currentStage) + 1, stages.length - 1)]; try { await api(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ stage: nextStage }) }); await loadData(); notify(`Lead advanced to ${nextStage}.`) } catch (err) { notify(message(err)) } }}
+                onLeadConvert={async (id) => { try { await api(`/leads/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Lead converted to a Project!') } catch (err) { notify(message(err)) } }}
+                onInvoiceSend={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Sent' }) }); await loadData(); notify('Invoice sent to the client.') } catch (problem) { notify(message(problem)) } }}
+                onPayrollPaid={async (id) => { try { await api(`/payroll/${id}/mark-paid`, { method: 'POST', body: JSON.stringify({ paid_date: todayISO() }) }); await loadData(); notify('Payroll run marked paid.') } catch (problem) { notify(message(problem)) } }}
+                onEstimateApprove={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) }); await loadData(); notify('Estimate approved.') } catch (problem) { notify(message(problem)) } }}
+                onEstimateConvert={async (id) => { try { await api(`/documents/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Estimate converted to a project.') } catch (problem) { notify(message(problem)) } }}
+              />
+            }
+          />
+        )}
+        {!loading && !['dashboard', 'leads', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable
           module={module}
           data={companyData}
           search={search}
