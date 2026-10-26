@@ -1159,13 +1159,12 @@ export default function LeadSourceTracking({ onNavigate, onSwitchToOperations, l
                       </td>
                       <td>
                         <span
-                          className={`lst-badge ${
-                            lead.stage === 'Qualified Estimate'
-                              ? 'lst-badge-open'
-                              : lead.stage === 'Inquiry'
+                          className={`lst-badge ${lead.stage === 'Qualified Estimate'
+                            ? 'lst-badge-open'
+                            : lead.stage === 'Inquiry'
                               ? 'lst-badge-evaluation'
                               : 'lst-badge-submitted'
-                          }`}
+                            }`}
                         >
                           {lead.stage}
                         </span>
@@ -1285,13 +1284,12 @@ export default function LeadSourceTracking({ onNavigate, onSwitchToOperations, l
                     </td>
                     <td>
                       <span
-                        className={`lst-badge ${
-                          tender.bidStatus === 'Open'
-                            ? 'lst-badge-open'
-                            : tender.bidStatus === 'Submitted'
+                        className={`lst-badge ${tender.bidStatus === 'Open'
+                          ? 'lst-badge-open'
+                          : tender.bidStatus === 'Submitted'
                             ? 'lst-badge-submitted'
                             : 'lst-badge-evaluation'
-                        }`}
+                          }`}
                       >
                         {tender.bidStatus}
                       </span>
@@ -1399,11 +1397,10 @@ export default function LeadSourceTracking({ onNavigate, onSwitchToOperations, l
                 <small style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: 700 }}>Current Status</small>
                 <div>
                   <span
-                    className={`lst-badge ${
-                      activePrequalLead.stage === 'Qualified Estimate'
-                        ? 'lst-badge-open'
-                        : 'lst-badge-evaluation'
-                    }`}
+                    className={`lst-badge ${activePrequalLead.stage === 'Qualified Estimate'
+                      ? 'lst-badge-open'
+                      : 'lst-badge-evaluation'
+                      }`}
                   >
                     {activePrequalLead.stage}
                   </span>
@@ -1535,15 +1532,14 @@ export default function LeadSourceTracking({ onNavigate, onSwitchToOperations, l
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <strong>{item.id} — {item.projectTitle}</strong>
                     <span
-                      className={`lst-badge ${
-                        item.status === 'Approved for Bidding'
-                          ? 'lst-badge-open'
-                          : item.status === 'Revision Required'
+                      className={`lst-badge ${item.status === 'Approved for Bidding'
+                        ? 'lst-badge-open'
+                        : item.status === 'Revision Required'
                           ? 'lst-badge-evaluation'
                           : item.status === 'Archived'
-                          ? 'lst-badge-archived'
-                          : 'lst-badge-submitted'
-                      }`}
+                            ? 'lst-badge-archived'
+                            : 'lst-badge-submitted'
+                        }`}
                     >
                       {item.status}
                     </span>
