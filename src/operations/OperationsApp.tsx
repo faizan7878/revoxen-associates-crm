@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
-import CrmSalesManager from './CrmSalesManager'
 import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import './operations.css'
@@ -307,45 +306,14 @@ function OperationsApp() {
       <header className="ops-topbar"><div className="ops-crumb"><button className="ops-icon-button ops-mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={18} /></button><span>REVOXEN</span><i>/</i><strong>{config.title}</strong></div><div className="ops-top-actions"><label className="ops-search"><Search size={15} /><input id="ops-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search records..." /><kbd>⌘ K</kbd></label><button className="ops-icon-button ops-bell" aria-label="Notifications" onClick={() => notify('No new alerts.')}><Bell size={17} /></button><span className="ops-top-avatar">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span></div></header>
       <div className="ops-content">
         {error && <div className="ops-error"><span><X size={15} />{error}</span><button onClick={() => void loadData(true)}>Retry</button></div>}
-        <div className="ops-heading"><div><div className="ops-eyebrow"><span />{module === 'profitLoss' ? `${periodMode === 'month' ? period : year} · FINANCIAL CONTROL` : `${currentDate.toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()} · REVOXEN ASSOCIATES`}</div><h1>{config.title}</h1><p>{config.subtitle}</p></div><div className="ops-heading-actions">{module !== 'profitLoss' && module !== 'users' && <button className="ops-outline-button" onClick={() => void loadData(true)} aria-label="Refresh records"><Activity size={15} />{refreshing ? 'Syncing...' : 'Refresh'}</button>}{config.add && canEdit(module) && <button className="ops-red-button" onClick={() => openDialog(module === 'payroll' ? 'payroll' : module === 'loans' ? 'employeeLoan' : module as EntryModule)}><Plus size={16} />{config.add}</button>}</div></div>
+        <div className="ops-heading"><div><div className="ops-eyebrow"><span />{module === 'profitLoss' ? `${periodMode === 'month' ? period : year} · FINANCIAL CONTROL` : `${currentDate.toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()} · REVOXEN ASSOCIATES`}</div><h1>{config.title}</h1><p>{config.subtitle}</p></div><div className="ops-heading-actions">{module !== 'profitLoss' && module !== 'users' && <button className="ops-outline-button" onClick={() => void loadData(true)} aria-label="Refresh records"><Activity size={15} />{refreshing ? 'Syncing...' : 'Refresh'}</button>}{config.add && module !== 'leads' && canEdit(module) && <button className="ops-red-button" onClick={() => openDialog(module === 'payroll' ? 'payroll' : module === 'loans' ? 'employeeLoan' : module as EntryModule)}><Plus size={16} />{config.add}</button>}</div></div>
         {loading && <div className="ops-loading"><span className="ops-spinner" />Loading company records…</div>}
         {!loading && module === 'dashboard' && <Dashboard data={companyData} finance={finance} onNavigate={changeModule} period={period} setPeriod={setPeriod} canView={canView} canEdit={canEdit} />}
+        {!loading && module === 'leads' && <LeadSourceTracking onNavigate={changeModule} leadsData={companyData.leads} canEdit={canEdit('leads')} />}
         {!loading && module === 'profitLoss' && <ProfitLoss finance={finance} period={period} setPeriod={setPeriod} year={year} setYear={setYear} periodMode={periodMode} setPeriodMode={setPeriodMode} />}
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
         {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
-        {!loading && module === 'leads' && (
-          <CrmSalesManager
-            canEdit={canEdit('leads')}
-            companyLeads={companyData.leads}
-            onRefresh={() => loadData(true)}
-            onNotify={notify}
-            rawTableComponent={
-              <ModuleTable
-                module="leads"
-                data={companyData}
-                search={search}
-                editable={canEdit('leads')}
-                canEdit={canEdit}
-                onAddNew={() => openDialog('leads')}
-                onEdit={(id) => openDialog('leads', id)}
-                onDelete={(ids) => handleDeleteRecords('leads', ids)}
-                onNotify={notify}
-                onPayment={(type, id) => openDialog(type, id)}
-                onLoan={() => openDialog('employeeLoan')}
-                onAssetMaintenance={(id) => openDialog('assetMaintenance', id)}
-                onInvoiceAudit={(id) => openDialog('invoiceAudit', id)}
-                onExpensePayment={(id) => openDialog('expensePayment', id)}
-                onLeadAdvance={async (id, currentStage) => { const stages = ['Lead Source', 'Qualified', 'Site Visit', 'Estimate / Bid', 'Proposal', 'Awarded']; const nextStage = stages[Math.min(stages.indexOf(currentStage) + 1, stages.length - 1)]; try { await api(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ stage: nextStage }) }); await loadData(); notify(`Lead advanced to ${nextStage}.`) } catch (err) { notify(message(err)) } }}
-                onLeadConvert={async (id) => { try { await api(`/leads/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Lead converted to a Project!') } catch (err) { notify(message(err)) } }}
-                onInvoiceSend={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Sent' }) }); await loadData(); notify('Invoice sent to the client.') } catch (problem) { notify(message(problem)) } }}
-                onPayrollPaid={async (id) => { try { await api(`/payroll/${id}/mark-paid`, { method: 'POST', body: JSON.stringify({ paid_date: todayISO() }) }); await loadData(); notify('Payroll run marked paid.') } catch (problem) { notify(message(problem)) } }}
-                onEstimateApprove={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) }); await loadData(); notify('Estimate approved.') } catch (problem) { notify(message(problem)) } }}
-                onEstimateConvert={async (id) => { try { await api(`/documents/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Estimate converted to a project.') } catch (problem) { notify(message(problem)) } }}
-              />
-            }
-          />
-        )}
         {!loading && !['dashboard', 'leads', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable
           module={module}
           data={companyData}
