@@ -149,7 +149,7 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
   }
 
   return <main className="auth-screen">
-    <div className="auth-brand"><span className="auth-brand-mark">R<i /></span><span>REVOXEN<small>ASSOCIATES</small></span></div>
+    <div className="auth-brand"><img src="/logo.png" alt="Revoxen Associates Logo" className="auth-brand-logo" /><span>REVOXEN<small>ASSOCIATES</small></span></div>
     <div className="auth-layout">
       <section className="auth-intro">
         <span className="auth-overline"><i /> OPERATIONS WORKSPACE</span>

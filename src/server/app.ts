@@ -495,7 +495,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     response.status(201).json(db.prepare('SELECT * FROM leads WHERE id = ?').get(result.lastInsertRowid))
   })
 
-  app.patch('/api/leads/:id', (request, response) => {
+  const handleUpdateLead = (request: Request, response: Response) => {
     const id = idParam(request)
     const body = objectBody(request)
     const target = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as Row | undefined
@@ -506,16 +506,22 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const value = body.value !== undefined ? money(body, 'value') : target.value
     const name = body.name !== undefined ? requiredText(body, 'name') : target.name
     const client = body.client !== undefined ? requiredText(body, 'client') : target.client
+    const phone = body.phone !== undefined ? optionalText(body, 'phone') : target.phone
+    const email = body.email !== undefined ? optionalText(body, 'email') : target.email
+    const site_address = body.site_address !== undefined ? optionalText(body, 'site_address') : target.site_address
+    const work_type = body.work_type !== undefined ? optionalText(body, 'work_type') : target.work_type
     const notes = body.notes !== undefined ? optionalText(body, 'notes') : target.notes
 
-    db.prepare(`UPDATE leads SET stage = ?, source = ?, value = ?, name = ?, client = ?, notes = ? WHERE id = ?`)
-      .run(stage, source, value, name, client, notes, id)
+    db.prepare(`UPDATE leads SET stage = ?, source = ?, value = ?, name = ?, client = ?, phone = ?, email = ?, site_address = ?, work_type = ?, notes = ? WHERE id = ?`)
+      .run(stage, source, value, name, client, phone, email, site_address, work_type, notes, id)
 
     const user = currentUser(request, db)
     if (user) logActivity(db, user.id, 'Updated Lead', 'Leads', `Updated lead ${target.lead_code} (Stage: ${stage})`, request)
 
     response.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(id))
-  })
+  }
+  app.patch('/api/leads/:id', handleUpdateLead)
+  app.put('/api/leads/:id', handleUpdateLead)
 
   app.delete('/api/leads/:id', (request, response) => {
     const id = idParam(request)
@@ -567,6 +573,47 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const user = currentUser(request, db)
     if (user) logActivity(db, user.id, 'Created Project', 'Projects', `Created project ${values.project_code}: ${values.name} (${Number(values.contract_amount).toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid))
+  })
+
+  const handleUpdateProject = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Project not found.')
+    const values = {
+      project_code: body.project_code !== undefined ? requiredText(body, 'project_code') : target.project_code,
+      name: body.name !== undefined ? requiredText(body, 'name') : target.name,
+      client: body.client !== undefined ? requiredText(body, 'client') : target.client,
+      work_type: body.work_type !== undefined ? optionalText(body, 'work_type') : target.work_type,
+      site_address: body.site_address !== undefined ? optionalText(body, 'site_address') : target.site_address,
+      start_date: body.start_date !== undefined ? optionalDate(body, 'start_date') : target.start_date,
+      due_date: body.due_date !== undefined ? optionalDate(body, 'due_date') : target.due_date,
+      contract_amount: body.contract_amount !== undefined ? money(body, 'contract_amount') : target.contract_amount,
+      manager: body.manager !== undefined ? optionalText(body, 'manager') : target.manager,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      id,
+    }
+    db.prepare(`UPDATE projects SET project_code=@project_code, name=@name, client=@client, work_type=@work_type, site_address=@site_address, start_date=@start_date, due_date=@due_date, contract_amount=@contract_amount, manager=@manager, status=@status WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Project', 'Projects', `Updated project ${values.project_code}: ${values.name}`, request)
+    response.json(db.prepare('SELECT * FROM projects WHERE id = ?').get(id))
+  }
+  app.put('/api/projects/:id', handleUpdateProject)
+  app.patch('/api/projects/:id', handleUpdateProject)
+  app.delete('/api/projects/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT project_code, name FROM projects WHERE id = ?').get(id) as { project_code?: string; name?: string } | undefined
+    if (!target) throw new HttpError(404, 'Project not found.')
+    db.transaction(() => {
+      db.prepare('DELETE FROM project_budget_lines WHERE budget_id IN (SELECT id FROM project_budgets WHERE project_id = ?)').run(id)
+      db.prepare('DELETE FROM project_budgets WHERE project_id = ?').run(id)
+      db.prepare('UPDATE expenses SET project_id = NULL WHERE project_id = ?').run(id)
+      db.prepare('UPDATE documents SET project_id = NULL WHERE project_id = ?').run(id)
+      db.prepare('DELETE FROM projects WHERE id = ?').run(id)
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Project', 'Projects', `Deleted project ${target.project_code || `#${id}`}`, request)
+    response.status(204).end()
   })
 
   app.get('/api/project-accounts/:ref', (request, response) => {
@@ -688,6 +735,54 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     response.status(201).json(db.prepare('SELECT * FROM employees WHERE id = ?').get(result.lastInsertRowid))
   })
 
+  const handleUpdateEmployee = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM employees WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Employee not found.')
+    const values = {
+      employee_code: body.employee_code !== undefined ? requiredText(body, 'employee_code') : target.employee_code,
+      full_name: body.full_name !== undefined ? requiredText(body, 'full_name') : target.full_name,
+      job_title: body.job_title !== undefined ? optionalText(body, 'job_title') : target.job_title,
+      department: body.department !== undefined ? optionalText(body, 'department') : target.department,
+      phone: body.phone !== undefined ? optionalText(body, 'phone') : target.phone,
+      email: body.email !== undefined ? optionalText(body, 'email') : target.email,
+      start_date: body.start_date !== undefined ? optionalDate(body, 'start_date') : target.start_date,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      base_salary: body.base_salary !== undefined ? money(body, 'base_salary') : target.base_salary,
+      housing_allowance: body.housing_allowance !== undefined ? money(body, 'housing_allowance') : target.housing_allowance,
+      transport_allowance: body.transport_allowance !== undefined ? money(body, 'transport_allowance') : target.transport_allowance,
+      other_allowance: body.other_allowance !== undefined ? money(body, 'other_allowance') : target.other_allowance,
+      monthly_bonus: body.monthly_bonus !== undefined ? money(body, 'monthly_bonus') : target.monthly_bonus,
+      overtime_multiplier: body.overtime_multiplier !== undefined ? money(body, 'overtime_multiplier') : target.overtime_multiplier,
+      tax_rate: body.tax_rate !== undefined ? percentage(body, 'tax_rate') : target.tax_rate,
+      benefit_deduction: body.benefit_deduction !== undefined ? money(body, 'benefit_deduction') : target.benefit_deduction,
+      employer_contribution: body.employer_contribution !== undefined ? money(body, 'employer_contribution') : target.employer_contribution,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+    db.prepare(`UPDATE employees SET employee_code=@employee_code, full_name=@full_name, job_title=@job_title, department=@department, phone=@phone, email=@email, start_date=@start_date, status=@status, base_salary=@base_salary, housing_allowance=@housing_allowance, transport_allowance=@transport_allowance, other_allowance=@other_allowance, monthly_bonus=@monthly_bonus, overtime_multiplier=@overtime_multiplier, tax_rate=@tax_rate, benefit_deduction=@benefit_deduction, employer_contribution=@employer_contribution, notes=@notes WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Employee', 'Employees', `Updated employee ${values.employee_code}: ${values.full_name}`, request)
+    response.json(db.prepare('SELECT * FROM employees WHERE id = ?').get(id))
+  }
+  app.put('/api/employees/:id', handleUpdateEmployee)
+  app.patch('/api/employees/:id', handleUpdateEmployee)
+  app.delete('/api/employees/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT employee_code, full_name FROM employees WHERE id = ?').get(id) as { employee_code?: string; full_name?: string } | undefined
+    if (!target) throw new HttpError(404, 'Employee not found.')
+    db.transaction(() => {
+      db.prepare('DELETE FROM payroll WHERE employee_id = ?').run(id)
+      db.prepare('DELETE FROM employee_loan_payments WHERE loan_id IN (SELECT id FROM employee_loans WHERE employee_id = ?)').run(id)
+      db.prepare('DELETE FROM employee_loans WHERE employee_id = ?').run(id)
+      db.prepare('DELETE FROM employees WHERE id = ?').run(id)
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Employee', 'Employees', `Deleted employee ${target.employee_code || `#${id}`}`, request)
+    response.status(204).end()
+  })
+
   app.get('/api/employees/:id/loans', (request, response) => {
     response.json(db.prepare('SELECT * FROM employee_loans WHERE employee_id = ? ORDER BY issue_date DESC').all(idParam(request)))
   })
@@ -706,6 +801,42 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const actUser = currentUser(request, db)
     if (actUser) logActivity(db, actUser.id, 'Issued Employee Loan', 'Employee loans', `Issued loan of ${principal.toLocaleString()} PKR to employee #${employeeId}`, request)
     response.status(201).json(result)
+  })
+
+  const handleUpdateLoan = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM employee_loans WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Loan not found.')
+    const values = {
+      issue_date: body.issue_date !== undefined ? requiredDate(body, 'issue_date') : target.issue_date,
+      principal: body.principal !== undefined ? positiveMoney(body, 'principal') : target.principal,
+      outstanding: body.outstanding !== undefined ? money(body, 'outstanding') : target.outstanding,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+    db.prepare(`UPDATE employee_loans SET issue_date=@issue_date, principal=@principal, outstanding=@outstanding, status=@status, notes=@notes WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Loan', 'Employee loans', `Updated loan #${id}`, request)
+    response.json(db.prepare('SELECT * FROM employee_loans WHERE id = ?').get(id))
+  }
+  app.put('/api/loans/:id', handleUpdateLoan)
+  app.patch('/api/loans/:id', handleUpdateLoan)
+  app.delete('/api/loans/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT * FROM employee_loans WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Loan not found.')
+    db.transaction(() => {
+      db.prepare('DELETE FROM employee_loan_payments WHERE loan_id = ?').run(id)
+      db.prepare('DELETE FROM employee_loans WHERE id = ?').run(id)
+      if (target.status === 'Active') {
+        db.prepare('UPDATE employees SET loan_balance = MAX(0, loan_balance - ?) WHERE id = ?').run(Number(target.outstanding || 0), target.employee_id)
+      }
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Loan', 'Employee loans', `Deleted loan #${id}`, request)
+    response.status(204).end()
   })
 
   app.get('/api/payroll', (request, response) => {
@@ -745,6 +876,42 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     response.json(db.prepare('SELECT * FROM payroll WHERE id = ?').get(idParam(request)))
   })
 
+  const handleUpdatePayroll = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM payroll WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Payroll record not found.')
+    const values = {
+      overtime_hours: body.overtime_hours !== undefined ? money(body, 'overtime_hours') : target.overtime_hours,
+      overtime_amount: body.overtime_amount !== undefined ? money(body, 'overtime_amount') : target.overtime_amount,
+      gross_salary: body.gross_salary !== undefined ? money(body, 'gross_salary') : target.gross_salary,
+      tax_deduction: body.tax_deduction !== undefined ? money(body, 'tax_deduction') : target.tax_deduction,
+      loan_deduction: body.loan_deduction !== undefined ? money(body, 'loan_deduction') : target.loan_deduction,
+      benefit_deduction: body.benefit_deduction !== undefined ? money(body, 'benefit_deduction') : target.benefit_deduction,
+      other_deduction: body.other_deduction !== undefined ? money(body, 'other_deduction') : target.other_deduction,
+      employer_contribution: body.employer_contribution !== undefined ? money(body, 'employer_contribution') : target.employer_contribution,
+      net_salary: body.net_salary !== undefined ? money(body, 'net_salary') : target.net_salary,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      paid_date: body.paid_date !== undefined ? optionalDate(body, 'paid_date') : target.paid_date,
+      id,
+    }
+    db.prepare(`UPDATE payroll SET overtime_hours=@overtime_hours, overtime_amount=@overtime_amount, gross_salary=@gross_salary, tax_deduction=@tax_deduction, loan_deduction=@loan_deduction, benefit_deduction=@benefit_deduction, other_deduction=@other_deduction, employer_contribution=@employer_contribution, net_salary=@net_salary, status=@status, paid_date=@paid_date WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Payroll', 'Payroll', `Updated payroll entry #${id}`, request)
+    response.json(db.prepare('SELECT * FROM payroll WHERE id = ?').get(id))
+  }
+  app.put('/api/payroll/:id', handleUpdatePayroll)
+  app.patch('/api/payroll/:id', handleUpdatePayroll)
+  app.delete('/api/payroll/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT id FROM payroll WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Payroll record not found.')
+    db.prepare('DELETE FROM payroll WHERE id = ?').run(id)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Payroll', 'Payroll', `Deleted payroll #${id}`, request)
+    response.status(204).end()
+  })
+
   app.get('/api/assets', (_request, response) => response.json(db.prepare('SELECT * FROM assets ORDER BY created_at DESC').all()))
   app.post('/api/assets', (request, response) => {
     const body = objectBody(request)
@@ -763,6 +930,49 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     if (actUser) logActivity(db, actUser.id, 'Added Asset', 'Company assets', `Registered asset ${values.asset_code}: ${values.name} (${Number(values.purchase_cost).toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM assets WHERE id = ?').get(result.lastInsertRowid))
   })
+
+  const handleUpdateAsset = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM assets WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Asset not found.')
+    const values = {
+      asset_code: body.asset_code !== undefined ? requiredText(body, 'asset_code') : target.asset_code,
+      name: body.name !== undefined ? requiredText(body, 'name') : target.name,
+      category: body.category !== undefined ? optionalText(body, 'category') : target.category,
+      make_model: body.make_model !== undefined ? optionalText(body, 'make_model') : target.make_model,
+      serial_number: body.serial_number !== undefined ? optionalText(body, 'serial_number') : target.serial_number,
+      purchase_date: body.purchase_date !== undefined ? requiredDate(body, 'purchase_date') : target.purchase_date,
+      purchase_cost: body.purchase_cost !== undefined ? money(body, 'purchase_cost') : target.purchase_cost,
+      useful_life_years: body.useful_life_years !== undefined ? money(body, 'useful_life_years') : target.useful_life_years,
+      salvage_value: body.salvage_value !== undefined ? money(body, 'salvage_value') : target.salvage_value,
+      condition: body.condition !== undefined ? optionalText(body, 'condition') : target.condition,
+      location: body.location !== undefined ? optionalText(body, 'location') : target.location,
+      assigned_to: body.assigned_to !== undefined ? optionalText(body, 'assigned_to') : target.assigned_to,
+      warranty_expiry: body.warranty_expiry !== undefined ? optionalDate(body, 'warranty_expiry') : target.warranty_expiry,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+    db.prepare(`UPDATE assets SET asset_code=@asset_code, name=@name, category=@category, make_model=@make_model, serial_number=@serial_number, purchase_date=@purchase_date, purchase_cost=@purchase_cost, useful_life_years=@useful_life_years, salvage_value=@salvage_value, condition=@condition, location=@location, assigned_to=@assigned_to, warranty_expiry=@warranty_expiry, notes=@notes WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Asset', 'Company assets', `Updated asset ${values.asset_code}: ${values.name}`, request)
+    response.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(id))
+  }
+  app.put('/api/assets/:id', handleUpdateAsset)
+  app.patch('/api/assets/:id', handleUpdateAsset)
+  app.delete('/api/assets/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT asset_code, name FROM assets WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Asset not found.')
+    db.transaction(() => {
+      db.prepare('DELETE FROM asset_maintenance WHERE asset_id = ?').run(id)
+      db.prepare('DELETE FROM assets WHERE id = ?').run(id)
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Asset', 'Company assets', `Deleted asset #${id}`, request)
+    response.status(204).end()
+  })
+
   app.get('/api/assets/:id/maintenance', (request, response) => {
     response.json(db.prepare(`SELECT m.*,v.company_name AS vendor_name FROM asset_maintenance m LEFT JOIN vendors v ON v.id=m.vendor_id WHERE m.asset_id=? ORDER BY m.service_date DESC`).all(idParam(request)))
   })
@@ -793,6 +1003,47 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const actUser = currentUser(request, db)
     if (actUser) logActivity(db, actUser.id, 'Added Vendor', 'Vendors', `Added vendor ${values.vendor_code}: ${values.company_name} (${values.trade || 'General'})`, request)
     response.status(201).json(db.prepare('SELECT * FROM vendors WHERE id = ?').get(result.lastInsertRowid))
+  })
+
+  const handleUpdateVendor = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM vendors WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Vendor not found.')
+    const values = {
+      vendor_code: body.vendor_code !== undefined ? requiredText(body, 'vendor_code') : target.vendor_code,
+      company_name: body.company_name !== undefined ? requiredText(body, 'company_name') : target.company_name,
+      contact_name: body.contact_name !== undefined ? optionalText(body, 'contact_name') : target.contact_name,
+      trade: body.trade !== undefined ? optionalText(body, 'trade') : target.trade,
+      phone: body.phone !== undefined ? optionalText(body, 'phone') : target.phone,
+      email: body.email !== undefined ? optionalText(body, 'email') : target.email,
+      tax_id: body.tax_id !== undefined ? optionalText(body, 'tax_id') : target.tax_id,
+      payment_terms: body.payment_terms !== undefined ? optionalText(body, 'payment_terms') : target.payment_terms,
+      address: body.address !== undefined ? optionalText(body, 'address') : target.address,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+    db.prepare(`UPDATE vendors SET vendor_code=@vendor_code, company_name=@company_name, contact_name=@contact_name, trade=@trade, phone=@phone, email=@email, tax_id=@tax_id, payment_terms=@payment_terms, address=@address, status=@status, notes=@notes WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Vendor', 'Vendors', `Updated vendor ${values.vendor_code}: ${values.company_name}`, request)
+    response.json(db.prepare('SELECT * FROM vendors WHERE id = ?').get(id))
+  }
+  app.put('/api/vendors/:id', handleUpdateVendor)
+  app.patch('/api/vendors/:id', handleUpdateVendor)
+  app.delete('/api/vendors/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT vendor_code, company_name FROM vendors WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Vendor not found.')
+    db.transaction(() => {
+      db.prepare('UPDATE expenses SET vendor_id = NULL WHERE vendor_id = ?').run(id)
+      db.prepare('DELETE FROM vendor_payments WHERE work_order_id IN (SELECT id FROM work_orders WHERE vendor_id = ?)').run(id)
+      db.prepare('DELETE FROM work_orders WHERE vendor_id = ?').run(id)
+      db.prepare('DELETE FROM vendors WHERE id = ?').run(id)
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Vendor', 'Vendors', `Deleted vendor #${id}`, request)
+    response.status(204).end()
   })
 
   app.get('/api/work-orders', (_request, response) => response.json(db.prepare(`SELECT w.*,p.project_code,p.name AS project_name,v.vendor_code,v.company_name AS vendor_name FROM work_orders w JOIN projects p ON p.id=w.project_id JOIN vendors v ON v.id=w.vendor_id ORDER BY w.created_at DESC`).all()))
@@ -834,8 +1085,46 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       return db.prepare('SELECT * FROM work_orders WHERE id=?').get(workOrderId)
     })()
     const actUser = currentUser(request, db)
-    if (actUser) logActivity(db, actUser.id, 'Subcontractor Payment', 'Sublet work orders', `Paid ${amount.toLocaleString()} PKR for work order #${workOrderId}`, request)
     response.status(201).json(result)
+  })
+
+  const handleUpdateWorkOrder = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Work order not found.')
+    const values = {
+      work_order_number: body.work_order_number !== undefined ? requiredText(body, 'work_order_number') : target.work_order_number,
+      project_id: body.project_id !== undefined ? positiveInteger(body.project_id, 'project_id') : target.project_id,
+      vendor_id: body.vendor_id !== undefined ? positiveInteger(body.vendor_id, 'vendor_id') : target.vendor_id,
+      scope: body.scope !== undefined ? requiredText(body, 'scope') : target.scope,
+      issue_date: body.issue_date !== undefined ? requiredDate(body, 'issue_date') : target.issue_date,
+      due_date: body.due_date !== undefined ? optionalDate(body, 'due_date') : target.due_date,
+      amount: body.amount !== undefined ? money(body, 'amount') : target.amount,
+      tax_amount: body.tax_amount !== undefined ? money(body, 'tax_amount') : target.tax_amount,
+      retention_amount: body.retention_amount !== undefined ? money(body, 'retention_amount') : target.retention_amount,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+    db.prepare(`UPDATE work_orders SET work_order_number=@work_order_number, project_id=@project_id, vendor_id=@vendor_id, scope=@scope, issue_date=@issue_date, due_date=@due_date, amount=@amount, tax_amount=@tax_amount, retention_amount=@retention_amount, status=@status, notes=@notes WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Work Order', 'Sublet work orders', `Updated work order ${values.work_order_number}`, request)
+    response.json(db.prepare('SELECT * FROM work_orders WHERE id = ?').get(id))
+  }
+  app.put('/api/work-orders/:id', handleUpdateWorkOrder)
+  app.patch('/api/work-orders/:id', handleUpdateWorkOrder)
+  app.delete('/api/work-orders/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT work_order_number FROM work_orders WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Work order not found.')
+    db.transaction(() => {
+      db.prepare('DELETE FROM vendor_payments WHERE work_order_id = ?').run(id)
+      db.prepare('DELETE FROM work_orders WHERE id = ?').run(id)
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Work Order', 'Sublet work orders', `Deleted work order #${id}`, request)
+    response.status(204).end()
   })
 
   app.get('/api/expenses', (_request, response) => response.json(db.prepare(`SELECT x.*,p.project_code,p.name AS project_name,v.company_name AS vendor_name FROM expenses x LEFT JOIN projects p ON p.id=x.project_id LEFT JOIN vendors v ON v.id=x.vendor_id ORDER BY x.expense_date DESC,x.id DESC`).all()))
@@ -895,8 +1184,48 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       return db.prepare('SELECT * FROM expense_payments WHERE id=?').get(payment.lastInsertRowid)
     })()
     const actUser = currentUser(request, db)
-    if (actUser) logActivity(db, actUser.id, 'Settled Expense', 'Expenses', `Paid ${amount.toLocaleString()} PKR towards expense #${id}`, request)
     response.status(201).json(result)
+  })
+
+  const handleUpdateExpense = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM expenses WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Expense not found.')
+    const values = {
+      expense_number: body.expense_number !== undefined ? requiredText(body, 'expense_number') : target.expense_number,
+      expense_type: body.expense_type !== undefined ? requiredText(body, 'expense_type') : target.expense_type,
+      category: body.category !== undefined ? requiredText(body, 'category') : target.category,
+      description: body.description !== undefined ? requiredText(body, 'description') : target.description,
+      expense_date: body.expense_date !== undefined ? requiredDate(body, 'expense_date') : target.expense_date,
+      project_id: body.project_id !== undefined ? (body.project_id ? Number(body.project_id) : null) : target.project_id,
+      vendor_id: body.vendor_id !== undefined ? (body.vendor_id ? Number(body.vendor_id) : null) : target.vendor_id,
+      amount: body.amount !== undefined ? money(body, 'amount') : target.amount,
+      tax_amount: body.tax_amount !== undefined ? money(body, 'tax_amount') : target.tax_amount,
+      payment_method: body.payment_method !== undefined ? optionalText(body, 'payment_method') : target.payment_method,
+      reference_number: body.reference_number !== undefined ? optionalText(body, 'reference_number') : target.reference_number,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+    db.prepare(`UPDATE expenses SET expense_number=@expense_number, expense_type=@expense_type, category=@category, description=@description, expense_date=@expense_date, project_id=@project_id, vendor_id=@vendor_id, amount=@amount, tax_amount=@tax_amount, payment_method=@payment_method, reference_number=@reference_number, status=@status, notes=@notes WHERE id=@id`).run(values)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Updated Expense', 'Expenses', `Updated expense ${values.expense_number}`, request)
+    response.json(db.prepare('SELECT * FROM expenses WHERE id = ?').get(id))
+  }
+  app.put('/api/expenses/:id', handleUpdateExpense)
+  app.patch('/api/expenses/:id', handleUpdateExpense)
+  app.delete('/api/expenses/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT expense_number FROM expenses WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Expense not found.')
+    db.transaction(() => {
+      db.prepare('DELETE FROM expense_payments WHERE expense_id = ?').run(id)
+      db.prepare('DELETE FROM expenses WHERE id = ?').run(id)
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, 'Deleted Expense', 'Expenses', `Deleted expense #${id}`, request)
+    response.status(204).end()
   })
 
   app.get('/api/documents', (request, response) => {
@@ -1027,6 +1356,86 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const actUser = currentUser(request, db)
     if (actUser) logActivity(db, actUser.id, 'Received Client Payment', 'Invoices', `Recorded receipt of ${amount.toLocaleString()} PKR for invoice ${document.document_number}`, request)
     response.status(201).json(payment)
+  })
+
+  const handleUpdateDocument = (request: Request, response: Response) => {
+    const id = idParam(request)
+    const body = objectBody(request)
+    const target = db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Document not found.')
+    const hasLines = Array.isArray(body.lines) && body.lines.length > 0
+    let subtotal = target.subtotal
+    let discountAmount = body.discount_amount !== undefined ? money(body, 'discount_amount') : target.discount_amount
+    let taxRate = body.tax_rate !== undefined ? percentage(body, 'tax_rate') : target.tax_rate
+    let taxAmount = target.tax_amount
+    let grandTotal = target.grand_total
+    let parsedLines: ReturnType<typeof calculateDocument>['lines'] = []
+
+    if (hasLines) {
+      const lines = body.lines.map((line: unknown, index: number) => {
+        if (!line || typeof line !== 'object' || Array.isArray(line)) throw new HttpError(400, 'Each line item must be an object.')
+        return { ...(line as Row), sortOrder: index }
+      })
+      const totals = calculateDocument(lines, discountAmount, taxRate)
+      subtotal = totals.subtotal
+      discountAmount = totals.discountAmount
+      taxRate = totals.taxRate
+      taxAmount = totals.taxAmount
+      grandTotal = totals.grandTotal
+      parsedLines = totals.lines
+    }
+
+    const values = {
+      document_number: body.document_number !== undefined ? requiredText(body, 'document_number') : target.document_number,
+      project_id: body.project_id !== undefined ? (body.project_id ? Number(body.project_id) : null) : target.project_id,
+      client_name: body.client_name !== undefined ? requiredText(body, 'client_name') : target.client_name,
+      subject: body.subject !== undefined ? requiredText(body, 'subject') : target.subject,
+      issue_date: body.issue_date !== undefined ? requiredDate(body, 'issue_date') : target.issue_date,
+      due_date: body.due_date !== undefined ? optionalDate(body, 'due_date') : target.due_date,
+      status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      billing_stage: body.billing_stage !== undefined ? optionalText(body, 'billing_stage') : target.billing_stage,
+      audit_status: body.audit_status !== undefined ? optionalText(body, 'audit_status') : target.audit_status,
+      audited_by: body.audited_by !== undefined ? optionalText(body, 'audited_by') : target.audited_by,
+      audit_date: body.audit_date !== undefined ? optionalDate(body, 'audit_date') : target.audit_date,
+      audit_notes: body.audit_notes !== undefined ? optionalText(body, 'audit_notes') : target.audit_notes,
+      subtotal,
+      discount_amount: discountAmount,
+      tax_rate: taxRate,
+      tax_amount: taxAmount,
+      grand_total: grandTotal,
+      notes: body.notes !== undefined ? optionalText(body, 'notes') : target.notes,
+      id,
+    }
+
+    db.transaction(() => {
+      db.prepare(`UPDATE documents SET document_number=@document_number, project_id=@project_id, client_name=@client_name, subject=@subject, issue_date=@issue_date, due_date=@due_date, status=@status, billing_stage=@billing_stage, audit_status=@audit_status, audited_by=@audited_by, audit_date=@audit_date, audit_notes=@audit_notes, subtotal=@subtotal, discount_amount=@discount_amount, tax_rate=@tax_rate, tax_amount=@tax_amount, grand_total=@grand_total, notes=@notes WHERE id=@id`).run(values)
+      if (hasLines && parsedLines.length > 0) {
+        db.prepare('DELETE FROM document_lines WHERE document_id = ?').run(id)
+        const insertLine = db.prepare(`INSERT INTO document_lines (document_id,sort_order,item,description,length,width,height,quantity,nos,unit,rate,tax_rate,measured_quantity,line_subtotal,line_tax,line_total)
+          VALUES (@documentId,@sortOrder,@item,@description,@length,@width,@height,@quantity,@nos,@unit,@rate,@taxRate,@measuredQuantity,@lineSubtotal,@lineTax,@lineTotal)`)
+        parsedLines.forEach((line, index) => insertLine.run({
+          documentId: id, sortOrder: index, item: requiredText(line, 'item'),
+          description: optionalText(line, 'description'), length: line.length, width: line.width, height: line.height,
+          quantity: line.quantity, nos: line.nos, unit: optionalText(line, 'unit', 'Each'), rate: line.rate,
+          taxRate: line.taxRate, measuredQuantity: line.measuredQuantity, lineSubtotal: line.lineSubtotal,
+          lineTax: line.lineTax, lineTotal: line.lineTotal,
+        }))
+      }
+    })()
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, `Updated ${target.document_type}`, 'Documents', `Updated ${target.document_type} ${values.document_number}`, request)
+    response.json(db.prepare('SELECT * FROM documents WHERE id = ?').get(id))
+  }
+  app.put('/api/documents/:id', handleUpdateDocument)
+  app.patch('/api/documents/:id', handleUpdateDocument)
+  app.delete('/api/documents/:id', (request, response) => {
+    const id = idParam(request)
+    const target = db.prepare('SELECT document_number, document_type FROM documents WHERE id = ?').get(id) as Row | undefined
+    if (!target) throw new HttpError(404, 'Document not found.')
+    db.prepare('DELETE FROM documents WHERE id = ?').run(id)
+    const user = currentUser(request, db)
+    if (user) logActivity(db, user.id, `Deleted ${target.document_type}`, 'Documents', `Deleted ${target.document_type} #${id}`, request)
+    response.status(204).end()
   })
 
   app.get('/api/finance', (request, response) => {
@@ -1183,6 +1592,11 @@ function routeModules(request: Request, db: Db, user: AuthUser): PermissionModul
   }
   if (path.startsWith('/project-accounts') || path.startsWith('/project-budgets') || /^\/projects\/\d+\/budgets$/.test(path)) return ['projectAccounts']
   if (path.startsWith('/projects')) return ['projects']
+  if (path.startsWith('/site-reports')) return ['siteReports']
+  if (path.startsWith('/materials') || path.startsWith('/material-requisitions') || path.startsWith('/material-issues')) return ['materialStore']
+  if (path.startsWith('/labor-attendance')) return ['laborAttendance']
+  if (path.startsWith('/site-inspections') || path.startsWith('/site-snags')) return ['inspections']
+  if (path.startsWith('/project-milestones')) return ['milestones']
   if (/^\/employees\/\d+\/loans/.test(path) || path.startsWith('/loans')) return ['loans']
   if (path.startsWith('/employees')) return ['employees']
   if (path.startsWith('/payroll')) return ['payroll']

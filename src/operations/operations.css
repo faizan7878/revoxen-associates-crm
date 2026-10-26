@@ -15,11 +15,13 @@
 .ops-shell { min-height: 100vh; color: var(--ops-text); background: var(--ops-canvas); font-family: var(--ops-body); font-size: 13px; }
 .ops-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; flex-direction: column; width: 244px; padding: 0 14px; color: #ededee; background: var(--ops-ink); }
 .ops-brand { display: flex; align-items: center; gap: 10px; height: 72px; padding: 0 7px; border-bottom: 1px solid #343537; }
+.ops-brand-logo { width: 34px; height: 34px; object-fit: contain; border-radius: 5px; flex-shrink: 0; }
 .ops-brand-mark { position: relative; display: grid; place-items: center; width: 30px; height: 30px; color: white; font: 700 18px var(--ops-display); border-radius: 4px; background: var(--ops-red); }
 .ops-brand-mark > span { position: absolute; right: 4px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: white; }
 .ops-brand-name { display: flex; flex-direction: column; gap: 4px; color: #fff; font: 700 13px var(--ops-display); letter-spacing: 1px; }
 .ops-brand-name small { color: #9c9d9f; font: 600 8px var(--ops-body); letter-spacing: 1.1px; }
 .ops-company { display: flex; align-items: center; gap: 9px; min-height: 59px; padding: 10px 8px; margin: 14px 0 25px; border: 1px solid #38393c; border-radius: 4px; background: #222325; }
+.ops-company-logo { width: 30px; height: 30px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
 .ops-company-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #fff; font: 700 9px var(--ops-display); border-radius: 3px; background: #38393c; }
 .ops-company > span:nth-child(2),.ops-profile > span:nth-child(2) { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .ops-company strong,.ops-profile strong { overflow: hidden; color: #f2f2f3; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -208,3 +210,348 @@
 .ops-spinning { animation: ops-spin 1s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+
+/* ==========================================================================
+   Module Toolbar & Batch Operations (Add new, Edit, Delete, Select, Copy, Print, Share, PDF, Save)
+   ========================================================================== */
+.ops-table-actions-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fbfbfb;
+  border-top: 1px solid #e8e8e9;
+  border-bottom: 1px solid #e8e8e9;
+}
+
+.ops-toolbar-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ops-toolbar-right {
+  margin-left: auto;
+}
+
+.ops-toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: #e2e2e4;
+  margin: 0 4px;
+}
+
+.ops-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  font-family: var(--ops-body);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #3f4144;
+  background: #ffffff;
+  border: 1px solid #dcdcdf;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ops-tool-btn:hover:not(:disabled) {
+  color: #191a1c;
+  background: #f5f5f6;
+  border-color: #c4c5c8;
+}
+
+.ops-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: #e5e5e6;
+  color: #a0a1a4;
+}
+
+.ops-tool-btn-primary {
+  color: #ffffff !important;
+  background: var(--ops-red) !important;
+  border-color: var(--ops-red) !important;
+}
+
+.ops-tool-btn-primary:hover:not(:disabled) {
+  background: var(--ops-red-dark) !important;
+  border-color: var(--ops-red-dark) !important;
+  box-shadow: 0 2px 6px rgba(179, 32, 42, 0.25);
+}
+
+.ops-tool-btn-danger {
+  color: #b91c1c;
+  background: #ffffff;
+  border-color: #fca5a5;
+}
+
+.ops-tool-btn-danger:hover:not(:disabled) {
+  color: #ffffff;
+  background: #dc2626;
+  border-color: #dc2626;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
+}
+
+.ops-tool-btn-save {
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.ops-tool-btn-save:hover:not(:disabled) {
+  color: #ffffff;
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.ops-tool-btn-active {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.ops-selection-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #991b1b;
+  background: #fee2e2;
+  border-radius: 12px;
+  letter-spacing: 0.4px;
+}
+
+/* Checkboxes in Table */
+.ops-checkbox-th,
+.ops-checkbox-td {
+  width: 38px !important;
+  min-width: 38px !important;
+  max-width: 38px !important;
+  padding: 0 8px !important;
+  text-align: center !important;
+}
+
+.ops-row-checkbox {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--ops-red);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.ops-row-selected td {
+  background: #fff5f5 !important;
+}
+
+/* Row-level action buttons */
+.ops-row-actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.ops-row-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #64748b;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ops-row-icon-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ops-row-icon-danger:hover {
+  color: #ffffff;
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+/* Delete Confirmation Modal */
+.ops-confirm-modal {
+  width: min(100%, 450px);
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22);
+  text-align: center;
+  animation: ops-rise 0.2s ease both;
+}
+
+.ops-confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 50%;
+}
+
+.ops-confirm-modal h3 {
+  margin: 0 0 8px;
+  color: #111827;
+  font-family: var(--ops-display);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ops-confirm-modal p {
+  margin: 0 0 20px;
+  color: #4b5563;
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.ops-confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Print Only Branding Banner */
+.ops-print-header {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Hide app navigation and interactive controls during print */
+  .ops-sidebar,
+  .ops-topbar,
+  .ops-table-actions-toolbar,
+  .ops-table-tools,
+  .ops-row-action,
+  .ops-row-icon-btn,
+  .ops-checkbox-th,
+  .ops-checkbox-td,
+  .ops-footer,
+  .ops-period-strip,
+  .ops-heading-actions,
+  .ops-empty,
+  .ops-toast,
+  .ops-modal-backdrop {
+    display: none !important;
+  }
+
+  .ops-main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .ops-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .ops-panel,
+  .ops-table-panel {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .ops-print-header {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #b3202a;
+  }
+
+  .ops-print-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ops-print-logo {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+  }
+
+  .ops-print-brand h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 800;
+    color: #191a1c;
+    letter-spacing: 0.8px;
+  }
+
+  .ops-print-brand p {
+    margin: 2px 0 0;
+    font-size: 9px;
+    color: #64748b;
+  }
+
+  .ops-print-meta {
+    font-size: 8.5px;
+    color: #334155;
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .ops-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  .ops-table th {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 8px !important;
+    font-size: 8px !important;
+  }
+
+  .ops-table td {
+    border: 1px solid #e2e8f0 !important;
+    padding: 6px 8px !important;
+    font-size: 8.5px !important;
+    color: #1e293b !important;
+  }
+
+  .ops-table tbody tr {
+    page-break-inside: avoid;
+  }
+
+  .ops-actions-cell,
+  th:last-child {
+    display: none !important;
+  }
+}

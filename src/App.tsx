@@ -254,7 +254,7 @@ function App() {
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
         <div className="brand-lockup">
-          <div className="brand-mark"><span>r</span><span className="brand-mark-dot" /></div>
+          <img src="/logo.png" alt="Revoxen Logo" className="brand-mark-logo" />
           <div className="brand-name">revoxen<span>associates</span></div>
           <button className="icon-button sidebar-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={17} /></button>
         </div>

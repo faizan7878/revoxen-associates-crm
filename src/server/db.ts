@@ -229,12 +229,138 @@ export function openDatabase(filename?: string): Db {
     );
     CREATE INDEX IF NOT EXISTS idx_activity_user ON user_activity_logs(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_created ON user_activity_logs(created_at);
+
+    CREATE TABLE IF NOT EXISTS daily_site_reports (
+      id INTEGER PRIMARY KEY,
+      report_number TEXT NOT NULL UNIQUE,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      report_date TEXT NOT NULL,
+      weather TEXT NOT NULL DEFAULT 'Sunny',
+      temperature TEXT NOT NULL DEFAULT '',
+      supervisor_name TEXT NOT NULL,
+      work_completed TEXT NOT NULL,
+      labor_count INTEGER NOT NULL DEFAULT 0,
+      machinery_active TEXT NOT NULL DEFAULT '',
+      materials_received TEXT NOT NULL DEFAULT '',
+      delays_issues TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Draft' CHECK(status IN ('Draft','Submitted','Approved')),
+      approved_by TEXT NOT NULL DEFAULT '',
+      approval_date TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_site_reports_project ON daily_site_reports(project_id);
+    CREATE INDEX IF NOT EXISTS idx_site_reports_date ON daily_site_reports(report_date);
+
+    CREATE TABLE IF NOT EXISTS materials (
+      id INTEGER PRIMARY KEY,
+      material_code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      current_stock REAL NOT NULL DEFAULT 0,
+      reorder_level REAL NOT NULL DEFAULT 0,
+      supplier_vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_materials_category ON materials(category);
+
+    CREATE TABLE IF NOT EXISTS material_requisitions (
+      id INTEGER PRIMARY KEY,
+      requisition_number TEXT NOT NULL UNIQUE,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE RESTRICT,
+      quantity REAL NOT NULL CHECK(quantity > 0),
+      required_date TEXT NOT NULL,
+      urgency TEXT NOT NULL DEFAULT 'Normal' CHECK(urgency IN ('Normal','Urgent','Emergency')),
+      requested_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending','Approved','Delivered','Cancelled')),
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_requisitions_project ON material_requisitions(project_id);
+
+    CREATE TABLE IF NOT EXISTS material_issues (
+      id INTEGER PRIMARY KEY,
+      issue_number TEXT NOT NULL UNIQUE,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE RESTRICT,
+      quantity REAL NOT NULL CHECK(quantity > 0),
+      issue_date TEXT NOT NULL,
+      issued_to TEXT NOT NULL,
+      purpose TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_issues_project ON material_issues(project_id);
+
+    CREATE TABLE IF NOT EXISTS daily_labor_attendance (
+      id INTEGER PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      work_date TEXT NOT NULL,
+      worker_name TEXT NOT NULL,
+      trade TEXT NOT NULL,
+      attendance_status TEXT NOT NULL DEFAULT 'Present' CHECK(attendance_status IN ('Present','Half day','Overtime','Absent')),
+      daily_rate REAL NOT NULL DEFAULT 0,
+      overtime_hours REAL NOT NULL DEFAULT 0,
+      total_amount REAL NOT NULL DEFAULT 0,
+      payment_status TEXT NOT NULL DEFAULT 'Pending' CHECK(payment_status IN ('Pending','Paid')),
+      paid_date TEXT NOT NULL DEFAULT '',
+      payment_method TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_labor_project_date ON daily_labor_attendance(project_id, work_date);
+
+    CREATE TABLE IF NOT EXISTS site_inspections (
+      id INTEGER PRIMARY KEY,
+      inspection_number TEXT NOT NULL UNIQUE,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      inspection_type TEXT NOT NULL,
+      inspection_date TEXT NOT NULL,
+      inspector_name TEXT NOT NULL,
+      result TEXT NOT NULL DEFAULT 'Passed' CHECK(result IN ('Passed','Passed with comments','Failed / Rework required')),
+      comments TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_inspections_project ON site_inspections(project_id);
+
+    CREATE TABLE IF NOT EXISTS site_snags (
+      id INTEGER PRIMARY KEY,
+      snag_number TEXT NOT NULL UNIQUE,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      location TEXT NOT NULL,
+      description TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'Medium' CHECK(severity IN ('Low','Medium','High','Critical')),
+      assigned_vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+      due_date TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Open' CHECK(status IN ('Open','In Progress','Fixed','Closed')),
+      resolution_notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_snags_project ON site_snags(project_id);
+
+    CREATE TABLE IF NOT EXISTS project_milestones (
+      id INTEGER PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      title TEXT NOT NULL,
+      stage_name TEXT NOT NULL,
+      target_start_date TEXT NOT NULL DEFAULT '',
+      target_end_date TEXT NOT NULL DEFAULT '',
+      actual_end_date TEXT NOT NULL DEFAULT '',
+      progress_percent REAL NOT NULL DEFAULT 0 CHECK(progress_percent >= 0 AND progress_percent <= 100),
+      status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending','In progress','Completed','Delayed')),
+      weightage_percent REAL NOT NULL DEFAULT 0,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_milestones_project ON project_milestones(project_id);
   `)
 
   db.prepare(`UPDATE users SET phone = '+92 300 5550199', recovery_email = 'faizeawan123@gmail.com' WHERE id = 1 AND (phone = '' OR recovery_email = '')`).run()
 
   if (dbPath !== ':memory:') {
     seedLeadsIfEmpty(db)
+    seedConstructionData(db)
   }
   return db
 }
@@ -408,6 +534,156 @@ export function seedLeadsIfEmpty(db: Db) {
       )
     }
   })()
+}
+
+export function seedConstructionData(db: Db) {
+  const materialsCount = Number((db.prepare('SELECT COUNT(*) as count FROM materials').get() as { count: number }).count)
+  if (materialsCount === 0) {
+    const insertMat = db.prepare(`
+      INSERT INTO materials (material_code, name, category, unit, unit_cost, current_stock, reorder_level, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    const items = [
+      ['MAT-001', 'DG Cement Ordinary Portland', 'Cement', 'Bags', 1350, 450, 100, 'Grade 42.5 OPC for RCC structural casting'],
+      ['MAT-002', 'Mughal Steel Deformed Rebar 60-Grade', 'Steel & Rebar', 'Tonnes', 265000, 14.5, 5, 'High-yield deformed bars #4, #6 & #8'],
+      ['MAT-003', 'Chenab River Sand (Screened)', 'Aggregates & Sand', 'Cft', 75, 1800, 500, 'Fine river sand for plaster & masonry mortar'],
+      ['MAT-004', 'Margalla Crushed Stone 3/4" (Bajri)', 'Aggregates & Sand', 'Cft', 110, 1200, 400, 'Graded aggregate for 1:2:4 concrete mix'],
+      ['MAT-005', 'First Class Red Clay Kiln Bricks', 'Bricks & Blocks', 'Nos', 15, 18500, 5000, 'Standard 9x4.5x3 inch solid burnt clay bricks'],
+      ['MAT-006', 'Fast Cables 7/0.029 Single Core Copper', 'Electrical', 'Coils', 14800, 32, 10, 'Pure copper concealed conduit wiring'],
+      ['MAT-007', 'Master PPRC Water Pipes 25mm', 'Plumbing', 'Lengths', 950, 85, 25, 'PN-20 hot & cold pressure pipes (13ft)'],
+      ['MAT-008', 'Berger Elegance Interior Emulsion', 'Paint & Finishes', 'Gallons', 5200, 24, 15, 'Matt finish architectural interior paint'],
+      ['MAT-009', 'RAK Full-Body Porcelain Tiles 60x60cm', 'Flooring', 'Boxes', 3400, 65, 30, 'Vitrified rectified floor tiles (4 pcs/box)'],
+    ]
+    for (const item of items) {
+      insertMat.run(item[0], item[1], item[2], item[3], item[4], item[5], item[6], item[7])
+    }
+  }
+
+  let project = db.prepare('SELECT id, project_code, name FROM projects ORDER BY id ASC LIMIT 1').get() as { id: number; project_code: string; name: string } | undefined
+  if (!project) {
+    const res = db.prepare(`
+      INSERT INTO projects (project_code, name, client, work_type, site_address, start_date, due_date, contract_amount, status, manager)
+      VALUES ('RX-101', 'Al-Haram Executive Residence & Commercial Plinth', 'Al-Haram Builders & Developers', 'New construction', 'Plot 42, Sector F-7/2, Islamabad', '2026-06-01', '2027-03-31', 45000000, 'In progress', 'Engr. Bilal Khan')
+    `).run()
+    project = { id: Number(res.lastInsertRowid), project_code: 'RX-101', name: 'Al-Haram Executive Residence & Commercial Plinth' }
+  }
+  const projectId = project.id
+
+  const siteReportsCount = Number((db.prepare('SELECT COUNT(*) as count FROM daily_site_reports').get() as { count: number }).count)
+  if (siteReportsCount === 0) {
+    const insertReport = db.prepare(`
+      INSERT INTO daily_site_reports (report_number, project_id, report_date, weather, temperature, supervisor_name, work_completed, labor_count, machinery_active, materials_received, delays_issues, status, approved_by, approval_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    insertReport.run(
+      'DSR-001', projectId, '2026-10-18', 'Sunny', '28°C', 'Engr. Hamza Tariq',
+      'Completed 2nd floor RCC column shuttering and rebar binding (Columns C1 to C8). Poured lean concrete for basement ramp extension. Internal brickwork started on 1st floor northern block.',
+      18, 'Concrete Mixer 1-bag (6 hrs), Mechanical Needle Vibrator (4 hrs), 25kVA Standby Generator (8 hrs)',
+      '200 bags DG Cement (Challan #4481), 4.2 Tons Mughal Rebar (Gate Pass #1092)',
+      'Minor 45-min power outage handled with standby site generator. All safety PPE inspected.',
+      'Approved', 'Engr. Bilal Khan (PM)', '2026-10-18'
+    )
+    insertReport.run(
+      'DSR-002', projectId, '2026-10-19', 'Clear', '30°C', 'Engr. Hamza Tariq',
+      'Formwork alignment and props tightening for 2nd floor beam & slab casting. Electrician conduit piping embedded in slab bottom mesh. Water curing maintained for 1st floor columns (twice daily).',
+      22, 'Tower Crane / Material Hoist (5 hrs), 2 Plate Compactors, Water Pump',
+      '1 Dumper Chenab Sand (600 Cft)',
+      'None. Site work progressing smoothly according to milestone schedule.',
+      'Submitted', '', ''
+    )
+  }
+
+  const mat1 = db.prepare('SELECT id FROM materials WHERE material_code = ?').get('MAT-001') as { id: number } | undefined
+  const mat2 = db.prepare('SELECT id FROM materials WHERE material_code = ?').get('MAT-002') as { id: number } | undefined
+  const mat5 = db.prepare('SELECT id FROM materials WHERE material_code = ?').get('MAT-005') as { id: number } | undefined
+  const mat7 = db.prepare('SELECT id FROM materials WHERE material_code = ?').get('MAT-007') as { id: number } | undefined
+
+  const reqCount = Number((db.prepare('SELECT COUNT(*) as count FROM material_requisitions').get() as { count: number }).count)
+  if (reqCount === 0 && mat1 && mat2 && mat7) {
+    const insertReq = db.prepare(`
+      INSERT INTO material_requisitions (requisition_number, project_id, material_id, quantity, required_date, urgency, requested_by, status, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    insertReq.run('REQ-001', projectId, mat1.id, 200, '2026-10-22', 'Urgent', 'Engr. Hamza Tariq', 'Delivered', 'Required for 2nd floor slab concrete casting.')
+    insertReq.run('REQ-002', projectId, mat2.id, 3.5, '2026-10-25', 'Normal', 'Engr. Hamza Tariq', 'Approved', 'Beams reinforcement #4 and #6 bars.')
+    insertReq.run('REQ-003', projectId, mat7.id, 30, '2026-10-28', 'Normal', 'M. Zubair (Plumbing Lead)', 'Pending', 'Washroom internal piping rough-in.')
+  }
+
+  const issuesCount = Number((db.prepare('SELECT COUNT(*) as count FROM material_issues').get() as { count: number }).count)
+  if (issuesCount === 0 && mat1 && mat5) {
+    const insertIss = db.prepare(`
+      INSERT INTO material_issues (issue_number, project_id, material_id, quantity, issue_date, issued_to, purpose)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+    insertIss.run('ISS-001', projectId, mat1.id, 150, '2026-10-18', 'Mistry Tariq (Civil Contractor)', 'Ground floor boundary wall & column encasement.')
+    insertIss.run('ISS-002', projectId, mat5.id, 3000, '2026-10-19', 'Subcontractor Al-Rehman Builders', '1st floor partition brick masonry.')
+  }
+
+  const laborCount = Number((db.prepare('SELECT COUNT(*) as count FROM daily_labor_attendance').get() as { count: number }).count)
+  if (laborCount === 0) {
+    const insertLabor = db.prepare(`
+      INSERT INTO daily_labor_attendance (project_id, work_date, worker_name, trade, attendance_status, daily_rate, overtime_hours, total_amount, payment_status, paid_date, payment_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    const workers = [
+      ['Tariq Mehmood', 'Mason (Raj Mistry)', 'Present', 2800, 2, 3500, 'Pending', '', ''],
+      ['Muhammad Aslam', 'Mason (Raj Mistry)', 'Present', 2800, 0, 2800, 'Pending', '', ''],
+      ['Rashid Minhas', 'Shuttering Carpenter', 'Present', 3000, 3, 4125, 'Pending', '', ''],
+      ['Naveed Akhtar', 'Shuttering Carpenter', 'Present', 3000, 0, 3000, 'Pending', '', ''],
+      ['Zubair Ahmed', 'Steel Fixer (Bar Bender)', 'Present', 2900, 2, 3625, 'Pending', '', ''],
+      ['Muhammad Akram', 'Helper / Mazdoor', 'Present', 1600, 2, 2000, 'Pending', '', ''],
+      ['Bilal Hussain', 'Helper / Mazdoor', 'Present', 1600, 0, 1600, 'Pending', '', ''],
+      ['Imran Ali', 'Helper / Mazdoor', 'Half day', 1600, 0, 800, 'Pending', '', ''],
+      ['Sajjad Malik', 'Plumber', 'Present', 2700, 0, 2700, 'Paid', '2026-10-19', 'Cash'],
+      ['Arshad Khan', 'Electrician', 'Present', 2700, 1, 3038, 'Paid', '2026-10-19', 'Cash'],
+    ]
+    for (const w of workers) {
+      insertLabor.run(projectId, '2026-10-19', w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8])
+    }
+  }
+
+  const inspCount = Number((db.prepare('SELECT COUNT(*) as count FROM site_inspections').get() as { count: number }).count)
+  if (inspCount === 0) {
+    const insertInsp = db.prepare(`
+      INSERT INTO site_inspections (inspection_number, project_id, inspection_type, inspection_date, inspector_name, result, comments)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+    insertInsp.run('INS-001', projectId, 'Steel & Shuttering Pre-Pour', '2026-10-18', 'Engr. Bilal Khan', 'Passed', 'Column C1 to C8 rebar cover spacers 40mm installed, tie wire tightened, vertical plumb verified within 3mm tolerance.')
+    insertInsp.run('INS-002', projectId, 'Concrete Slump & Cube Test', '2026-10-15', 'PCSIR Material Lab', 'Passed', 'Slump test measured 105mm (target 100±25mm). 7-day compressive strength achieved 21.4 MPa.')
+    insertInsp.run('INS-003', projectId, 'Plumbing Pressure Test', '2026-10-12', 'Engr. Hamza Tariq', 'Passed with comments', 'Water line held 10 bar pressure for 4 hours without drop. Joint 4 in shaft B had minor weeping, tightened and re-tested.')
+  }
+
+  const snagCount = Number((db.prepare('SELECT COUNT(*) as count FROM site_snags').get() as { count: number }).count)
+  if (snagCount === 0) {
+    const insertSnag = db.prepare(`
+      INSERT INTO site_snags (snag_number, project_id, location, description, severity, due_date, status, resolution_notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    insertSnag.run('SNG-001', projectId, '1st Floor Shaft B', 'PPRC pipe clip bracket missing on riser pipe.', 'Medium', '2026-10-25', 'In Progress', 'Vendor notified, clamp bracket will be installed today.')
+    insertSnag.run('SNG-002', projectId, 'Basement Parking Beam B-2', 'Minor surface honeycombing at beam bottom after shuttering strip.', 'High', '2026-10-22', 'Fixed', 'Cleaned with wire brush and patched with non-shrink structural epoxy mortar.')
+    insertSnag.run('SNG-003', projectId, 'Ground Floor Main Corridor', 'Mortar drops on aluminum window sub-frame sill.', 'Low', '2026-10-28', 'Open', 'Requires scraper and solvent cleaning before glass glazing.')
+  }
+
+  const milesCount = Number((db.prepare('SELECT COUNT(*) as count FROM project_milestones').get() as { count: number }).count)
+  if (milesCount === 0) {
+    const insertMile = db.prepare(`
+      INSERT INTO project_milestones (project_id, title, stage_name, target_start_date, target_end_date, actual_end_date, progress_percent, status, weightage_percent, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    const milestones = [
+      ['Mobilization & Site Layout Survey', 'Substructure & Excavation', '2026-06-01', '2026-06-15', '2026-06-14', 100, 'Completed', 5, 'Boundary demarcation and site office setup.'],
+      ['Foundation Excavation & Lean Concrete', 'Substructure & Excavation', '2026-06-16', '2026-07-10', '2026-07-08', 100, 'Completed', 15, 'Raft excavation up to 12ft depth.'],
+      ['Substructure Raft & Plinth Beam', 'Substructure & Excavation', '2026-07-12', '2026-08-15', '2026-08-14', 100, 'Completed', 20, 'Termite treatment and DPC membrane laid.'],
+      ['Ground & 1st Floor RCC Frame Structure', 'RCC Structure', '2026-08-16', '2026-10-30', '', 85, 'In progress', 25, '2nd floor slab casting scheduled for next week.'],
+      ['Brickwork Masonry & Internal Plaster', 'Masonry & Plaster', '2026-10-01', '2026-12-15', '', 40, 'In progress', 15, 'Ground floor masonry completed; 1st floor under way.'],
+      ['Concealed MEP (Electrical & Plumbing)', 'MEP Services', '2026-10-15', '2026-12-30', '', 25, 'In progress', 10, 'Conduit piping embedded in slabs.'],
+      ['Flooring, Wall Tiles & False Ceiling', 'Flooring & Finishes', '2027-01-01', '2027-02-28', '', 0, 'Pending', 7, 'Procurement of porcelain tiles finalized.'],
+      ['Testing, Snagging & Final Client Handover', 'Testing & Handover', '2027-03-01', '2027-03-25', '', 0, 'Pending', 3, 'Final audit and completion certificate.'],
+    ]
+    for (const m of milestones) {
+      insertMile.run(projectId, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8])
+    }
+  }
 }
 
 function ensureColumn(db: Db, table: string, column: string, definition: string) {

@@ -1,10 +1,10 @@
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
-  Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, Bell,
-  BriefcaseBusiness, CalendarDays, Check, CheckCircle2, ChevronDown,
-  CircleDollarSign, ClipboardList, FileSpreadsheet,
-  FileText, Filter, HardHat, LayoutDashboard, LogOut, Menu, Package, Plus, Receipt,
-  Search, ShieldCheck, UserCog, UsersRound, Wallet, Wrench, X, Briefcase, Sparkles, PieChart as PieIcon, type LucideIcon,
+  Activity, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, Bell,
+  BriefcaseBusiness, CalendarDays, Check, CheckCircle2, CheckSquare, ChevronDown,
+  CircleDollarSign, ClipboardList, Copy, Download, FileDown, FileSpreadsheet,
+  FileText, Filter, HardHat, LayoutDashboard, LogOut, Menu, Package, Pencil, Plus, Printer, Receipt,
+  Search, Share2, ShieldCheck, Trash2, UserCog, UsersRound, Wallet, Wrench, X, Briefcase, Sparkles, PieChart as PieIcon, type LucideIcon,
 } from 'lucide-react'
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
@@ -263,6 +263,16 @@ function OperationsApp() {
   const notify = (message: string) => setToast(message)
   const openDialog = (target: typeof dialog, id?: number) => { setSelectedId(id ?? null); setDialog(target) }
 
+  const handleDeleteRecords = async (targetModule: ModuleId, ids: number[]) => {
+    if (!ids.length) return
+    const route = apiRoute(targetModule as any)
+    for (const id of ids) {
+      await api(`/${route}/${id}`, { method: 'DELETE' })
+    }
+    await loadData(true)
+    notify(`Successfully deleted ${ids.length} record${ids.length === 1 ? '' : 's'}.`)
+  }
+
   if (authMode === 'checking') return <div className="ops-loading"><span className="ops-spinner" />Checking secure sign-in…</div>
   if (authMode === 'setup' || authMode === 'login') return <AuthScreen setupRequired={authMode === 'setup'} onAuthenticated={(nextUser) => {
     setUser(nextUser)
@@ -283,8 +293,8 @@ function OperationsApp() {
 
   return <div className={`ops-shell ${hideRowActions ? 'ops-read-only-actions' : ''}`}>
     <aside className={`ops-sidebar ${mobileNav ? 'ops-sidebar-open' : ''}`}>
-      <div className="ops-brand"><span className="ops-brand-mark">R<span /></span><span className="ops-brand-name">REVOXEN<small>ASSOCIATES · OPERATIONS</small></span><button className="ops-icon-button ops-mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={17} /></button></div>
-      <div className="ops-company"><span className="ops-company-mark">RA</span><span><strong>Revoxen Associates</strong><small>PKR · Pakistan</small></span><ChevronDown size={14} /></div>
+      <div className="ops-brand"><img src="/logo.png" alt="Revoxen Logo" className="ops-brand-logo" /><span className="ops-brand-name">REVOXEN<small>ASSOCIATES · OPERATIONS</small></span><button className="ops-icon-button ops-mobile-close" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={17} /></button></div>
+      <div className="ops-company"><img src="/logo.png" alt="Revoxen Logo" className="ops-company-logo" /><span><strong>Revoxen Associates</strong><small>PKR · Pakistan</small></span><ChevronDown size={14} /></div>
       <nav className="ops-nav" aria-label="Company modules">{navGroups.map((group) => {
         const links = group.links.filter(({ id }) => canView(id))
         return links.length ? <div className="ops-nav-group" key={group.title}><span className="ops-nav-title">{group.title}</span>{links.map(({ id, label, icon: Icon }) => <button key={id} className={`ops-nav-link ${module === id ? 'ops-nav-active' : ''}`} onClick={() => changeModule(id)}><Icon size={16} strokeWidth={1.8} /><span>{label}</span>{id === 'invoices' && finance && finance.receivables > 0 && <i className="ops-nav-dot" />}</button>)}</div> : null
@@ -303,7 +313,28 @@ function OperationsApp() {
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
         {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
-        {!loading && !['dashboard', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable module={module} data={companyData} search={search} editable={canEdit(module)} canEdit={canEdit} onPayment={(type, id) => openDialog(type, id)} onLoan={() => openDialog('employeeLoan')} onAssetMaintenance={(id) => openDialog('assetMaintenance', id)} onInvoiceAudit={(id) => openDialog('invoiceAudit', id)} onExpensePayment={(id) => openDialog('expensePayment', id)} onLeadAdvance={async (id, currentStage) => { const stages = ['Lead Source', 'Qualified', 'Site Visit', 'Estimate / Bid', 'Proposal', 'Awarded']; const nextStage = stages[Math.min(stages.indexOf(currentStage) + 1, stages.length - 1)]; try { await api(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ stage: nextStage }) }); await loadData(); notify(`Lead advanced to ${nextStage}.`) } catch (err) { notify(message(err)) } }} onLeadConvert={async (id) => { try { await api(`/leads/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Lead converted to a Project!') } catch (err) { notify(message(err)) } }} onInvoiceSend={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Sent' }) }); await loadData(); notify('Invoice sent to the client.') } catch (problem) { notify(message(problem)) } }} onPayrollPaid={async (id) => { try { await api(`/payroll/${id}/mark-paid`, { method: 'POST', body: JSON.stringify({ paid_date: todayISO() }) }); await loadData(); notify('Payroll run marked paid.') } catch (problem) { notify(message(problem)) } }} onEstimateApprove={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) }); await loadData(); notify('Estimate approved.') } catch (problem) { notify(message(problem)) } }} onEstimateConvert={async (id) => { try { await api(`/documents/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Estimate converted to a project.') } catch (problem) { notify(message(problem)) } }} />}
+        {!loading && !['dashboard', 'projectAccounts', 'profitLoss', 'users'].includes(module) && <ModuleTable
+          module={module}
+          data={companyData}
+          search={search}
+          editable={canEdit(module)}
+          canEdit={canEdit}
+          onAddNew={() => openDialog(module === 'payroll' ? 'payroll' : module === 'loans' ? 'employeeLoan' : module as EntryModule)}
+          onEdit={(id) => openDialog(module === 'payroll' ? 'payroll' : module === 'loans' ? 'employeeLoan' : module as EntryModule, id)}
+          onDelete={(ids) => handleDeleteRecords(module, ids)}
+          onNotify={notify}
+          onPayment={(type, id) => openDialog(type, id)}
+          onLoan={() => openDialog('employeeLoan')}
+          onAssetMaintenance={(id) => openDialog('assetMaintenance', id)}
+          onInvoiceAudit={(id) => openDialog('invoiceAudit', id)}
+          onExpensePayment={(id) => openDialog('expensePayment', id)}
+          onLeadAdvance={async (id, currentStage) => { const stages = ['Lead Source', 'Qualified', 'Site Visit', 'Estimate / Bid', 'Proposal', 'Awarded']; const nextStage = stages[Math.min(stages.indexOf(currentStage) + 1, stages.length - 1)]; try { await api(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ stage: nextStage }) }); await loadData(); notify(`Lead advanced to ${nextStage}.`) } catch (err) { notify(message(err)) } }}
+          onLeadConvert={async (id) => { try { await api(`/leads/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Lead converted to a Project!') } catch (err) { notify(message(err)) } }}
+          onInvoiceSend={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Sent' }) }); await loadData(); notify('Invoice sent to the client.') } catch (problem) { notify(message(problem)) } }}
+          onPayrollPaid={async (id) => { try { await api(`/payroll/${id}/mark-paid`, { method: 'POST', body: JSON.stringify({ paid_date: todayISO() }) }); await loadData(); notify('Payroll run marked paid.') } catch (problem) { notify(message(problem)) } }}
+          onEstimateApprove={async (id) => { try { await api(`/documents/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) }); await loadData(); notify('Estimate approved.') } catch (problem) { notify(message(problem)) } }}
+          onEstimateConvert={async (id) => { try { await api(`/documents/${id}/convert-to-project`, { method: 'POST' }); await loadData(); notify('Estimate converted to a project.') } catch (problem) { notify(message(problem)) } }}
+        />}
         {finance && module === 'dashboard' && <div className="ops-accounting-note"><ShieldCheck size={16} /> Financial totals are calculated from database transactions. PKR tax is shown separately from operating income.</div>}
         <footer className="ops-footer"><span>REVOXEN ASSOCIATES · OPERATIONS SYSTEM</span><span><i /> SQLite persistent storage · PKR</span></footer>
       </div>
@@ -368,7 +399,58 @@ function ExpenseControlSummary({ kind, expenses }: { kind: 'Project' | 'General'
   return <section className="ops-metric-grid expense-control-summary">{metrics.map(({ label, value, detail, tone }) => <article className="ops-metric" key={label}><div className="ops-metric-head"><span>{label}</span><i className={`ops-metric-icon metric-${tone}`}><CircleDollarSign size={15} /></i></div><strong>{value}</strong><small>{detail}</small></article>)}</section>
 }
 
-function ModuleTable({ module, data, search, editable, canEdit, onPayment, onPayrollPaid, onEstimateApprove, onEstimateConvert, onLoan, onAssetMaintenance, onInvoiceAudit, onExpensePayment, onInvoiceSend, onLeadAdvance, onLeadConvert }: { module: ModuleId; data: Bootstrap; search: string; editable: boolean; canEdit: (id: ModuleId) => boolean; onPayment: (type: 'invoicePayment' | 'workOrderPayment', id: number) => void; onPayrollPaid: (id: number) => void; onEstimateApprove: (id: number) => void; onEstimateConvert: (id: number) => void; onLoan: () => void; onAssetMaintenance: (id: number) => void; onInvoiceAudit: (id: number) => void; onExpensePayment: (id: number) => void; onInvoiceSend: (id: number) => void; onLeadAdvance?: (id: number, currentStage: string) => void; onLeadConvert?: (id: number) => void }) {
+function ModuleTable({
+  module,
+  data,
+  search,
+  editable,
+  canEdit,
+  onAddNew,
+  onEdit,
+  onDelete,
+  onNotify,
+  onPayment,
+  onPayrollPaid,
+  onEstimateApprove,
+  onEstimateConvert,
+  onLoan,
+  onAssetMaintenance,
+  onInvoiceAudit,
+  onExpensePayment,
+  onInvoiceSend,
+  onLeadAdvance,
+  onLeadConvert,
+}: {
+  module: ModuleId
+  data: Bootstrap
+  search: string
+  editable: boolean
+  canEdit: (id: ModuleId) => boolean
+  onAddNew?: () => void
+  onEdit?: (id: number) => void
+  onDelete?: (ids: number[]) => Promise<void>
+  onNotify?: (message: string) => void
+  onPayment: (type: 'invoicePayment' | 'workOrderPayment', id: number) => void
+  onPayrollPaid: (id: number) => void
+  onEstimateApprove: (id: number) => void
+  onEstimateConvert: (id: number) => void
+  onLoan: () => void
+  onAssetMaintenance: (id: number) => void
+  onInvoiceAudit: (id: number) => void
+  onExpensePayment: (id: number) => void
+  onInvoiceSend: (id: number) => void
+  onLeadAdvance?: (id: number, currentStage: string) => void
+  onLeadConvert?: (id: number) => void
+}) {
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [confirmDeleteIds, setConfirmDeleteIds] = useState<number[] | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const headerCheckboxRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [module, search])
+
   const filtered = (rows: Entry[]) => rows.filter((row) => !search || Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(search.toLowerCase())))
   let rows: Entry[] = []
   let columns: [string, string][] = []
@@ -386,9 +468,438 @@ function ModuleTable({ module, data, search, editable, canEdit, onPayment, onPay
     case 'estimates': rows = filtered(data.documents.filter((document) => document.document_type === 'Estimate')); columns = [['document_number','ESTIMATE'],['issue_date','DATE'],['client_name','CLIENT'],['subject','SCOPE'],['subtotal','SUBTOTAL'],['discount_amount','DISCOUNT'],['tax_amount','TAX'],['grand_total','TOTAL · PKR'],['status','STATUS']]; break
     case 'invoices': rows = filtered(data.documents.filter((document) => document.document_type === 'Invoice')); columns = [['document_number','INVOICE'],['billing_stage','BILLING STAGE'],['issue_date','ISSUED'],['due_date','DUE'],['client_name','CLIENT'],['subject','BILLING MILESTONE'],['grand_total','TOTAL'],['amount_paid','RECEIVED'],['audit_status','AUDIT'],['status','STATUS']]; break
   }
-  const hasAction = editable && canEdit(module) && (module !== 'employees' || canEdit('loans')) && ['leads','payroll','loans','employees','assets','invoices','workOrders','estimates','projectExpenses','officeExpenses'].includes(module)
-  return <section className="ops-panel ops-table-panel"><div className="ops-panel-head"><div><span className="ops-section-label">{module.toUpperCase().replaceAll(/([A-Z])/g, ' $1')}</span><h2>{rows.length} {rows.length === 1 ? 'record' : 'records'}</h2></div><div className="ops-table-tools">{module === 'payroll' && <span className="ops-action-chip">Gross includes overtime</span>}<button className="ops-icon-button" aria-label="Filter records"><Filter size={15} /></button></div></div>
-    <div className="ops-table-wrap"><table className="ops-table"><thead><tr>{columns.map(([key, label]) => <th key={key}>{label}</th>)}{hasAction && <th>ACTION</th>}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}>{columns.map(([key]) => <td key={key}>{renderValue(key, row[key], row)}</td>)}{module === 'leads' && <td className="ops-actions-cell">{row.stage !== 'Awarded' && row.stage !== 'Lost' && onLeadAdvance && <button className="ops-row-action" onClick={() => onLeadAdvance(Number(row.id), String(row.stage))}>Advance stage</button>}{row.stage === 'Awarded' && !row.project_id && onLeadConvert && <button className="ops-row-action" onClick={() => onLeadConvert(Number(row.id))}>Create project</button>}{Boolean(row.project_id) && <span className="ops-action-chip">Project linked</span>}</td>}{module === 'payroll' && <td>{row.status === 'Draft' && <button className="ops-row-action" onClick={() => onPayrollPaid(Number(row.id))}>Mark paid</button>}</td>}{module === 'employees' && <td><button className="ops-row-action" onClick={onLoan}>Issue loan</button></td>}{module === 'loans' && <td>{row.status === 'Active' ? 'Repay through payroll' : '—'}</td>}{module === 'assets' && <td><button className="ops-row-action" onClick={() => onAssetMaintenance(Number(row.id))}>Log maintenance</button></td>}{['projectExpenses','officeExpenses'].includes(module) && <td>{Number(row.amount || 0) + Number(row.tax_amount || 0) > Number(row.paid_amount || 0) && row.status !== 'Void' ? <button className="ops-row-action" onClick={() => onExpensePayment(Number(row.id))}>Settle balance</button> : 'Paid'}</td>}{module === 'invoices' && <td className="ops-actions-cell">{row.billing_stage === 'Final' && row.audit_status !== 'Passed' && <button className="ops-row-action" onClick={() => onInvoiceAudit(Number(row.id))}>Complete audit</button>}{row.status === 'Draft' && (row.billing_stage !== 'Final' || row.audit_status === 'Passed') && <button className="ops-row-action" onClick={() => onInvoiceSend(Number(row.id))}>Send invoice</button>}{Number(row.grand_total || 0) > Number(row.amount_paid || 0) && row.status !== 'Void' && row.status !== 'Draft' && <button className="ops-row-action" onClick={() => onPayment('invoicePayment', Number(row.id))}>Record payment</button>}</td>}{module === 'workOrders' && <td>{Number(row.amount || 0) + Number(row.tax_amount || 0) - Number(row.retention_amount || 0) > Number(row.paid_amount || 0) && <button className="ops-row-action" onClick={() => onPayment('workOrderPayment', Number(row.id))}>Record payment</button>}</td>}{module === 'estimates' && <td>{row.status === 'Draft' || row.status === 'Sent' ? <button className="ops-row-action" onClick={() => onEstimateApprove(Number(row.id))}>Approve</button> : row.status === 'Approved' ? <button className="ops-row-action" onClick={() => onEstimateConvert(Number(row.id))}>Create project</button> : '—'}</td>}</tr>)}</tbody></table>{rows.length === 0 && <div className="ops-empty"><span><Search size={18} /></span><strong>{search ? 'No matching records' : 'No records entered yet'}</strong><p>{search ? 'Try a different search.' : 'Use the action above to add the first record.'}</p></div>}</div><div className="ops-table-foot"><span>Financial values displayed in Pakistani rupees (PKR).</span><span>{rows.length} total</span></div></section>
+
+  const isAllSelected = rows.length > 0 && rows.every((r) => selectedIds.has(Number(r.id)))
+  const isSomeSelected = rows.some((r) => selectedIds.has(Number(r.id))) && !isAllSelected
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = isSomeSelected
+    }
+  }, [isSomeSelected])
+
+  const toggleAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(rows.map((r) => Number(r.id))))
+    }
+  }
+
+  const toggleOne = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const getEffectiveRows = () => {
+    if (selectedIds.size > 0) {
+      return rows.filter((r) => selectedIds.has(Number(r.id)))
+    }
+    return rows
+  }
+
+  const handleCopy = async () => {
+    const targetRows = getEffectiveRows()
+    if (!targetRows.length) { onNotify?.('No records to copy.'); return }
+    const headerLine = columns.map(([, label]) => label).join('\t')
+    const lines = targetRows.map((row) => columns.map(([key]) => String(row[key] ?? '')).join('\t'))
+    const tsv = [headerLine, ...lines].join('\n')
+    try {
+      await navigator.clipboard.writeText(tsv)
+      onNotify?.(`Copied ${targetRows.length} record${targetRows.length === 1 ? '' : 's'} to clipboard.`)
+    } catch {
+      onNotify?.('Clipboard access denied.')
+    }
+  }
+
+  const handlePrint = () => {
+    window.print()
+  }
+
+  const handleShare = async () => {
+    const targetRows = getEffectiveRows()
+    const summary = `Revoxen Associates - ${labels[module]?.title || module}: ${targetRows.length} records. URL: ${window.location.href}`
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Revoxen - ${labels[module]?.title || module}`,
+          text: summary,
+          url: window.location.href,
+        })
+        onNotify?.('Shared successfully.')
+      } catch {
+        // user aborted share
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(summary)
+        onNotify?.('Share summary copied to clipboard.')
+      } catch {
+        onNotify?.('Could not copy share text.')
+      }
+    }
+  }
+
+  const handleDownloadPdf = () => {
+    const origTitle = document.title
+    document.title = `Revoxen_${labels[module]?.title.replace(/\s+/g, '_') || module}_${todayISO()}`
+    window.print()
+    setTimeout(() => { document.title = origTitle }, 1200)
+    onNotify?.('Print dialog opened. Select "Save as PDF" to download.')
+  }
+
+  const handleSaveCsv = () => {
+    const targetRows = getEffectiveRows()
+    if (!targetRows.length) { onNotify?.('No records to export.'); return }
+    const escapeCsv = (val: unknown) => {
+      const s = String(val ?? '').replace(/"/g, '""')
+      return `"${s}"`
+    }
+    const headerLine = columns.map(([, label]) => escapeCsv(label)).join(',')
+    const dataLines = targetRows.map((row) => columns.map(([key]) => escapeCsv(row[key])).join(','))
+    const csv = '\uFEFF' + [headerLine, ...dataLines].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Revoxen_${labels[module]?.title.replace(/\s+/g, '_') || module}_${todayISO()}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    onNotify?.(`Saved ${targetRows.length} record${targetRows.length === 1 ? '' : 's'} as CSV file.`)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!confirmDeleteIds || !confirmDeleteIds.length || !onDelete) return
+    setDeleting(true)
+    try {
+      await onDelete(confirmDeleteIds)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        confirmDeleteIds.forEach((id) => next.delete(id))
+        return next
+      })
+      setConfirmDeleteIds(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const hasAction = editable && canEdit(module)
+
+  return (
+    <section className="ops-panel ops-table-panel">
+      {/* Print-only branding banner */}
+      <div className="ops-print-header">
+        <div className="ops-print-brand">
+          <img src="/logo.png" alt="Revoxen Logo" className="ops-print-logo" />
+          <div>
+            <h2>REVOXEN ASSOCIATES</h2>
+            <p>Architecture · Interior · Construction Management · Operations</p>
+          </div>
+        </div>
+        <div className="ops-print-meta">
+          <div><strong>Module:</strong> {labels[module]?.title || module}</div>
+          <div><strong>Date:</strong> {currentDate.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+          <div><strong>Records:</strong> {getEffectiveRows().length}</div>
+        </div>
+      </div>
+
+      <div className="ops-panel-head">
+        <div>
+          <span className="ops-section-label">{module.toUpperCase().replaceAll(/([A-Z])/g, ' $1')}</span>
+          <h2>{rows.length} {rows.length === 1 ? 'record' : 'records'}</h2>
+        </div>
+        <div className="ops-table-tools">
+          {module === 'payroll' && <span className="ops-action-chip">Gross includes overtime</span>}
+          <button className="ops-icon-button" aria-label="Filter records"><Filter size={15} /></button>
+        </div>
+      </div>
+
+      {/* Global Module Actions Toolbar (Add new, Edit, Delete, Select All, Copy, Print, Share, Download PDF, Save) */}
+      <div className="ops-table-actions-toolbar">
+        <div className="ops-toolbar-group">
+          {editable && onAddNew && (
+            <button
+              type="button"
+              className="ops-tool-btn ops-tool-btn-primary"
+              onClick={onAddNew}
+              title={`Add new ${labels[module]?.title.replace(/s$/, '') || 'record'}`}
+            >
+              <Plus size={14} />
+              <span>Add New</span>
+            </button>
+          )}
+          {editable && onEdit && (
+            <button
+              type="button"
+              className="ops-tool-btn"
+              disabled={selectedIds.size !== 1}
+              onClick={() => {
+                const id = Array.from(selectedIds)[0]
+                onEdit(id)
+              }}
+              title={selectedIds.size === 1 ? 'Edit selected record' : 'Select 1 record to edit'}
+            >
+              <Pencil size={14} />
+              <span>Edit</span>
+            </button>
+          )}
+          {editable && onDelete && (
+            <button
+              type="button"
+              className="ops-tool-btn ops-tool-btn-danger"
+              disabled={selectedIds.size === 0}
+              onClick={() => setConfirmDeleteIds(Array.from(selectedIds))}
+              title={selectedIds.size > 0 ? `Delete ${selectedIds.size} selected record(s)` : 'Select records to delete'}
+            >
+              <Trash2 size={14} />
+              <span>Delete {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}</span>
+            </button>
+          )}
+        </div>
+
+        <div className="ops-toolbar-divider" />
+
+        <div className="ops-toolbar-group">
+          <button
+            type="button"
+            className={`ops-tool-btn ${isAllSelected ? 'ops-tool-btn-active' : ''}`}
+            onClick={toggleAll}
+            title={isAllSelected ? 'Deselect all rows' : 'Select all visible rows'}
+          >
+            <CheckSquare size={14} />
+            <span>{isAllSelected ? 'Deselect All' : 'Select All'}</span>
+          </button>
+          {selectedIds.size > 0 && (
+            <span className="ops-selection-badge">{selectedIds.size} selected</span>
+          )}
+        </div>
+
+        <div className="ops-toolbar-divider" />
+
+        <div className="ops-toolbar-group ops-toolbar-right">
+          <button
+            type="button"
+            className="ops-tool-btn"
+            onClick={handleCopy}
+            title="Copy selected or visible rows to clipboard"
+          >
+            <Copy size={14} />
+            <span>Copy</span>
+          </button>
+          <button
+            type="button"
+            className="ops-tool-btn"
+            onClick={handlePrint}
+            title="Print table view"
+          >
+            <Printer size={14} />
+            <span>Print</span>
+          </button>
+          <button
+            type="button"
+            className="ops-tool-btn"
+            onClick={handleShare}
+            title="Share summary link"
+          >
+            <Share2 size={14} />
+            <span>Share</span>
+          </button>
+          <button
+            type="button"
+            className="ops-tool-btn"
+            onClick={handleDownloadPdf}
+            title="Download clean PDF document"
+          >
+            <FileDown size={14} />
+            <span>Download PDF</span>
+          </button>
+          <button
+            type="button"
+            className="ops-tool-btn ops-tool-btn-save"
+            onClick={handleSaveCsv}
+            title="Save and download as Excel CSV"
+          >
+            <Download size={14} />
+            <span>Save</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="ops-table-wrap">
+        <table className="ops-table">
+          <thead>
+            <tr>
+              <th className="ops-checkbox-th">
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  className="ops-row-checkbox"
+                  checked={isAllSelected}
+                  onChange={toggleAll}
+                  aria-label="Select all rows"
+                />
+              </th>
+              {columns.map(([key, label]) => (
+                <th key={key}>{label}</th>
+              ))}
+              {hasAction && <th>ACTION</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const rowId = Number(row.id)
+              const isSelected = selectedIds.has(rowId)
+              return (
+                <tr key={String(row.id)} className={isSelected ? 'ops-row-selected' : ''}>
+                  <td className="ops-checkbox-td" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="ops-row-checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleOne(rowId)}
+                      aria-label={`Select row ${rowId}`}
+                    />
+                  </td>
+                  {columns.map(([key]) => (
+                    <td key={key}>{renderValue(key, row[key], row)}</td>
+                  ))}
+                  {hasAction && (
+                    <td className="ops-actions-cell">
+                      <div className="ops-row-actions-group">
+                        {onEdit && (
+                          <button
+                            type="button"
+                            className="ops-row-icon-btn"
+                            title="Edit record"
+                            onClick={() => onEdit(rowId)}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button
+                            type="button"
+                            className="ops-row-icon-btn ops-row-icon-danger"
+                            title="Delete record"
+                            onClick={() => setConfirmDeleteIds([rowId])}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                        {module === 'leads' && (
+                          <>
+                            {row.stage !== 'Awarded' && row.stage !== 'Lost' && onLeadAdvance && (
+                              <button className="ops-row-action" onClick={() => onLeadAdvance(rowId, String(row.stage))}>Advance stage</button>
+                            )}
+                            {row.stage === 'Awarded' && !row.project_id && onLeadConvert && (
+                              <button className="ops-row-action" onClick={() => onLeadConvert(rowId)}>Create project</button>
+                            )}
+                            {Boolean(row.project_id) && <span className="ops-action-chip">Project linked</span>}
+                          </>
+                        )}
+                        {module === 'payroll' && (
+                          <>
+                            {row.status === 'Draft' && <button className="ops-row-action" onClick={() => onPayrollPaid(rowId)}>Mark paid</button>}
+                          </>
+                        )}
+                        {module === 'employees' && (
+                          <button className="ops-row-action" onClick={onLoan}>Issue loan</button>
+                        )}
+                        {module === 'loans' && (
+                          <span>{row.status === 'Active' ? 'Repay through payroll' : '—'}</span>
+                        )}
+                        {module === 'assets' && (
+                          <button className="ops-row-action" onClick={() => onAssetMaintenance(rowId)}>Log maintenance</button>
+                        )}
+                        {['projectExpenses','officeExpenses'].includes(module) && (
+                          <>
+                            {Number(row.amount || 0) + Number(row.tax_amount || 0) > Number(row.paid_amount || 0) && row.status !== 'Void' ? (
+                              <button className="ops-row-action" onClick={() => onExpensePayment(rowId)}>Settle balance</button>
+                            ) : 'Paid'}
+                          </>
+                        )}
+                        {module === 'invoices' && (
+                          <>
+                            {row.billing_stage === 'Final' && row.audit_status !== 'Passed' && (
+                              <button className="ops-row-action" onClick={() => onInvoiceAudit(rowId)}>Complete audit</button>
+                            )}
+                            {row.status === 'Draft' && (row.billing_stage !== 'Final' || row.audit_status === 'Passed') && (
+                              <button className="ops-row-action" onClick={() => onInvoiceSend(rowId)}>Send invoice</button>
+                            )}
+                            {Number(row.grand_total || 0) > Number(row.amount_paid || 0) && row.status !== 'Void' && row.status !== 'Draft' && (
+                              <button className="ops-row-action" onClick={() => onPayment('invoicePayment', rowId)}>Record payment</button>
+                            )}
+                          </>
+                        )}
+                        {module === 'workOrders' && (
+                          <>
+                            {Number(row.amount || 0) + Number(row.tax_amount || 0) - Number(row.retention_amount || 0) > Number(row.paid_amount || 0) && (
+                              <button className="ops-row-action" onClick={() => onPayment('workOrderPayment', rowId)}>Record payment</button>
+                            )}
+                          </>
+                        )}
+                        {module === 'estimates' && (
+                          <>
+                            {row.status === 'Draft' || row.status === 'Sent' ? (
+                              <button className="ops-row-action" onClick={() => onEstimateApprove(rowId)}>Approve</button>
+                            ) : row.status === 'Approved' ? (
+                              <button className="ops-row-action" onClick={() => onEstimateConvert(rowId)}>Create project</button>
+                            ) : '—'}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <div className="ops-empty">
+            <span><Search size={18} /></span>
+            <strong>{search ? 'No matching records' : 'No records entered yet'}</strong>
+            <p>{search ? 'Try a different search.' : 'Use the action above to add the first record.'}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="ops-table-foot">
+        <span>Financial values displayed in Pakistani rupees (PKR).</span>
+        <span>{rows.length} total</span>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDeleteIds && (
+        <div className="ops-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !deleting) setConfirmDeleteIds(null) }}>
+          <div className="ops-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-delete-title">
+            <div className="ops-confirm-icon">
+              <AlertTriangle size={24} />
+            </div>
+            <h3 id="confirm-delete-title">Delete {confirmDeleteIds.length} Record{confirmDeleteIds.length === 1 ? '' : 's'}?</h3>
+            <p>
+              Are you sure you want to permanently delete {confirmDeleteIds.length === 1 ? 'this record' : `these ${confirmDeleteIds.length} records`} from the <strong>{labels[module]?.title || module}</strong> module? Linked records and audit history will be updated accordingly. This operation cannot be reversed.
+            </p>
+            <div className="ops-confirm-actions">
+              <button type="button" className="ops-outline-button" onClick={() => setConfirmDeleteIds(null)} disabled={deleting}>
+                Cancel
+              </button>
+              <button type="button" className="ops-red-button" onClick={handleDeleteConfirm} disabled={deleting}>
+                {deleting ? 'Deleting…' : <><Trash2 size={14} /> Delete Record{confirmDeleteIds.length === 1 ? '' : 's'}</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }
 
 function renderValue(key: string, value: unknown, row: Entry) {
@@ -443,13 +954,78 @@ function DataTable({ rows, columns }: { rows: Entry[]; columns: [string, string]
 }
 
 function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: EntryModule | 'payroll' | 'employeeLoan' | 'assetMaintenance' | 'invoiceAudit' | 'invoicePayment' | 'workOrderPayment' | 'expensePayment'; selectedId: number | null; data: Bootstrap; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
-  const [values, setValues] = useState<Record<string, string>>(() => ({ issue_date: todayISO(), expense_date: todayISO(), start_date: todayISO(), purchase_date: todayISO(), pay_period: currentPeriod(), paid_date: todayISO(), payment_date: todayISO(), audit_date: todayISO(), status: target === 'projects' ? 'Planning' : target === 'employees' || target === 'vendors' ? 'Active' : target === 'assets' ? 'Good' : target === 'workOrders' ? 'Issued' : target === 'projectExpenses' || target === 'officeExpenses' ? 'Paid' : 'Draft', audit_status: 'Pending', billing_stage: 'Progress', tax_rate: '0', overtime_multiplier: '1.5', unit: 'Each' }))
-  const [lines, setLines] = useState<LineItem[]>([blankLine()])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
   const documentModule = target === 'estimates' || target === 'invoices'
   const isPayment = target === 'invoicePayment' || target === 'workOrderPayment' || target === 'expensePayment'
   const isInvoiceAudit = target === 'invoiceAudit'
+  const isEdit = Boolean(selectedId && !isPayment && !isInvoiceAudit && target !== 'assetMaintenance')
+
+  const existingRecord = useMemo(() => {
+    if (!isEdit || !selectedId) return null
+    if (target === 'payroll') return data.payroll.find((r) => Number(r.id) === selectedId)
+    if (target === 'employeeLoan') return data.employeeLoans.find((r) => Number(r.id) === selectedId)
+    if (target === 'leads') return data.leads.find((r) => Number(r.id) === selectedId)
+    if (target === 'projects') return data.projects.find((r) => Number(r.id) === selectedId)
+    if (target === 'employees') return data.employees.find((r) => Number(r.id) === selectedId)
+    if (target === 'assets') return data.assets.find((r) => Number(r.id) === selectedId)
+    if (target === 'vendors') return data.vendors.find((r) => Number(r.id) === selectedId)
+    if (target === 'workOrders') return data.workOrders.find((r) => Number(r.id) === selectedId)
+    if (target === 'projectExpenses' || target === 'officeExpenses') return data.expenses.find((r) => Number(r.id) === selectedId)
+    if (target === 'estimates' || target === 'invoices') return data.documents.find((r) => Number(r.id) === selectedId)
+    return null
+  }, [isEdit, selectedId, target, data])
+
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const defaults: Record<string, string> = {
+      issue_date: todayISO(),
+      expense_date: todayISO(),
+      start_date: todayISO(),
+      purchase_date: todayISO(),
+      pay_period: currentPeriod(),
+      paid_date: todayISO(),
+      payment_date: todayISO(),
+      audit_date: todayISO(),
+      status: target === 'projects' ? 'Planning' : target === 'employees' || target === 'vendors' ? 'Active' : target === 'assets' ? 'Good' : target === 'workOrders' ? 'Issued' : target === 'projectExpenses' || target === 'officeExpenses' ? 'Paid' : 'Draft',
+      audit_status: 'Pending',
+      billing_stage: 'Progress',
+      tax_rate: '0',
+      overtime_multiplier: '1.5',
+      unit: 'Each',
+    }
+    if (existingRecord) {
+      for (const [k, v] of Object.entries(existingRecord)) {
+        if (v !== null && v !== undefined) defaults[k] = String(v)
+      }
+    }
+    return defaults
+  })
+
+  const [lines, setLines] = useState<LineItem[]>([blankLine()])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!documentModule || !isEdit || !selectedId) return
+    let active = true
+    api<{ document: Entry; lines: any[] }>(`/documents/${selectedId}`).then((res) => {
+      if (!active) return
+      if (res && Array.isArray(res.lines) && res.lines.length > 0) {
+        setLines(res.lines.map((l) => ({
+          item: String(l.item || ''),
+          description: String(l.description || ''),
+          length: l.length ? String(l.length) : '',
+          width: l.width ? String(l.width) : '',
+          height: l.height ? String(l.height) : '',
+          quantity: l.quantity ? String(l.quantity) : '1',
+          nos: l.nos ? String(l.nos) : '1',
+          unit: String(l.unit || 'Each'),
+          rate: l.rate ? String(l.rate) : '',
+          taxRate: l.taxRate ? String(l.taxRate) : '0',
+        })))
+      }
+    }).catch(() => {})
+    return () => { active = false }
+  }, [documentModule, isEdit, selectedId])
+
   const fields: Field[] = target === 'payroll' ? [
     { key: 'employee_id', label: 'Employee', kind: 'select', required: true, options: data.employees.filter((employee) => employee.status === 'Active').map((employee) => ({ value: String(employee.id), label: `${text(employee.employee_code)} · ${text(employee.full_name)}` })) },
     { key: 'pay_period', label: 'Pay period', kind: 'month' as Field['kind'] },
@@ -472,6 +1048,7 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
     { key: 'payment_date', label: 'Payment date', kind: 'date', required: true }, { key: 'amount', label: 'Payment amount (PKR)', kind: 'number', min: .01, step: .01, required: true },
     { key: 'payment_method', label: 'Payment method', kind: 'select', options: ['Bank transfer', 'Cheque', 'Cash', 'Mobile wallet'].map((value) => ({ value, label: value })) }, { key: 'reference_number', label: 'Transaction / cheque reference' }, { key: 'notes', label: 'Payment notes' },
   ] : entryFields(target as EntryModule, data)
+
   const selectedEmployee = data.employees.find((employee) => String(employee.id) === values.employee_id)
   const payrollGross = selectedEmployee ? Number(selectedEmployee.base_salary || 0) + Number(selectedEmployee.housing_allowance || 0) + Number(selectedEmployee.transport_allowance || 0) + Number(selectedEmployee.other_allowance || 0) + Number(selectedEmployee.monthly_bonus || 0) + (Number(values.overtime_hours || 0) * Number(selectedEmployee.base_salary || 0) / 208 * Number(selectedEmployee.overtime_multiplier || 1.5)) : 0
   const documentSubtotal = lines.reduce((sum, line) => sum + ((Number(line.length) > 0 || Number(line.width) > 0 || Number(line.height) > 0 ? (Number(line.length) || 1) * (Number(line.width) || 1) * (Number(line.height) || 1) : 1) * Number(line.quantity || 0) * Number(line.nos || 0) * Number(line.rate || 0)), 0)
@@ -485,7 +1062,22 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
     setSaving(true)
     setError('')
     try {
-      if (target === 'payroll') {
+      if (isEdit) {
+        if (target === 'payroll') {
+          await api(`/payroll/${selectedId}`, { method: 'PUT', body: JSON.stringify({ ...values, employee_id: Number(values.employee_id), overtime_hours: Number(values.overtime_hours || 0), loan_deduction: Number(values.loan_deduction || 0), other_deduction: Number(values.other_deduction || 0) }) })
+          await onSaved('Payroll record updated.')
+        } else if (target === 'employeeLoan') {
+          await api(`/loans/${selectedId}`, { method: 'PUT', body: JSON.stringify({ ...values, principal: Number(values.principal) }) })
+          await onSaved('Employee loan record updated.')
+        } else {
+          const route = apiRoute(target as EntryModule)
+          await api(`/${route}/${selectedId}`, {
+            method: 'PUT',
+            body: JSON.stringify(modulePayload(target as EntryModule, values, documentModule ? lines : undefined)),
+          })
+          await onSaved(`${labels[target as EntryModule]?.title.replace(/s$/, '') || 'Record'} updated successfully.`)
+        }
+      } else if (target === 'payroll') {
         await api('/payroll', { method: 'POST', body: JSON.stringify({ ...values, employee_id: Number(values.employee_id), overtime_hours: Number(values.overtime_hours || 0), loan_deduction: Number(values.loan_deduction || 0), other_deduction: Number(values.other_deduction || 0) }) })
         await onSaved('Payroll calculated and saved. Check gross and net before marking paid.')
       } else if (target === 'employeeLoan') {
@@ -504,36 +1096,136 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
       } else {
         const result = await api(`/` + apiRoute(target as EntryModule), { method: 'POST', body: JSON.stringify(modulePayload(target as EntryModule, values, documentModule ? lines : undefined)) })
         if (target === 'estimates' && result && typeof result === 'object' && 'document_number' in result) await onSaved('Detailed estimate saved.')
-        else await onSaved(`${labels[target as EntryModule].title.replace(/s$/, '')} record saved to SQLite.`)
+        else await onSaved(`${labels[target as EntryModule]?.title.replace(/s$/, '') || 'Record'} saved to SQLite.`)
       }
     } catch (problem) { setError(message(problem)); setSaving(false) }
   }
-  const title = target === 'payroll' ? 'Run monthly payroll' : target === 'employeeLoan' ? 'Issue employee loan' : target === 'assetMaintenance' ? 'Log asset maintenance' : isInvoiceAudit ? 'Record final billing audit' : isPayment ? target === 'invoicePayment' ? 'Record client payment' : target === 'workOrderPayment' ? 'Record subcontractor payment' : 'Record expense settlement' : `New ${labels[target as EntryModule].title.replace(/s$/, '').toLowerCase()}`
 
-  return <div className="ops-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className={`ops-modal ${documentModule ? 'ops-modal-document' : ''}`} role="dialog" aria-modal="true" aria-labelledby="entry-dialog-title"><header className="ops-modal-head"><span className="ops-modal-icon">{documentModule ? <FileSpreadsheet size={18} /> : target === 'payroll' ? <Banknote size={18} /> : isPayment ? <Receipt size={18} /> : <Plus size={18} />}</span><button type="button" className="ops-icon-button" aria-label="Close form" onClick={onClose}><X size={18} /></button><span className="ops-section-label">REVOXEN ASSOCIATES · PKR</span><h2 id="entry-dialog-title">{title}</h2><p>{documentModule ? 'Add every measured item, set each unit and tax rate, then verify the calculated total.' : isPayment ? 'Add a dated payment entry; the remaining balance will be recalculated automatically.' : 'Enter the operational details. Monetary values are stored as PKR.'}</p></header><form className="ops-form" onSubmit={submit}><div className="ops-form-grid">{fields.map((field) => <FormField key={field.key} field={field} value={values[field.key] ?? ''} onChange={(value) => setField(field.key, value)} />)}</div>
-      {documentModule && <>
-        <div className="ops-line-items-head"><div><span className="ops-section-label">ITEMIZED SCOPE</span><h3>Estimate / invoice lines</h3></div><button type="button" className="ops-outline-button" onClick={() => setLines((current) => [...current, blankLine()])}><Plus size={14} />Add line</button></div>
-        <div className="ops-line-scroll"><table className="ops-line-table"><thead><tr><th>ITEM / SCOPE</th><th>LENGTH</th><th>WIDTH</th><th>HEIGHT</th><th>QTY</th><th>NOS</th><th>UNIT</th><th>RATE · PKR</th><th>TAX %</th><th>LINE TOTAL</th><th /></tr></thead>
-          <tbody>{lines.map((line, index) => {
-            const measured = Number(line.length) > 0 || Number(line.width) > 0 || Number(line.height) > 0
-              ? (Number(line.length) || 1) * (Number(line.width) || 1) * (Number(line.height) || 1)
-              : 1
-            const lineTotal = measured * Number(line.quantity || 0) * Number(line.nos || 0) * Number(line.rate || 0)
-            return <Fragment key={`line-group-${index}`}>
-              <tr key={`line-${index}`}>
-                {(['item','length','width','height','quantity','nos','unit','rate','taxRate'] as const).map((key) => <td key={key}><input aria-label={`${index === 0 ? 'First' : `Line ${index + 1}`} ${key}`} required={key === 'item' || key === 'rate'} type={['length','width','height','quantity','nos','rate','taxRate'].includes(key) ? 'number' : 'text'} min="0" step="any" value={line[key]} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex === index ? { ...currentLine, [key]: event.target.value } : currentLine))} placeholder={key === 'unit' ? 'Each' : key === 'quantity' || key === 'nos' ? '1' : key === 'taxRate' ? '0' : ''} /></td>)}
-                <td><strong>{pkr(lineTotal)}</strong></td>
-                <td><button className="ops-remove-line" aria-label="Remove line" type="button" disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><X size={14} /></button></td>
-              </tr>
-              <tr key={`description-${index}`} className="ops-line-description"><td colSpan={11}><input aria-label={`Line ${index + 1} description`} placeholder="Describe material, finish, grade, dimensions or labor scope…" value={line.description} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex === index ? { ...currentLine, description: event.target.value } : currentLine))} /></td></tr>
-            </Fragment>
-          })}</tbody>
-        </table></div>
-        <div className="ops-total-preview"><span><small>SUBTOTAL</small><strong>{pkr(documentSubtotal)}</strong></span><span><small>DISCOUNT</small><strong>− {pkr(discount)}</strong></span><span><small>LINE TAX</small><strong>{pkr(documentTax - documentTax * (documentSubtotal ? discount / documentSubtotal : 0))}</strong></span><span><small>GRAND TOTAL</small><strong>{pkr(previewTotal)}</strong></span></div>
-      </>}
-      {target === 'payroll' && selectedEmployee && <div className="ops-payroll-preview"><span>ESTIMATED GROSS PAY <strong>{pkr(payrollGross)}</strong></span><small>Final gross and deductions will be calculated by the payroll service before saving.</small></div>}
-      {error && <div className="ops-form-error">{error}</div>}<div className="ops-modal-actions"><button type="button" className="ops-outline-button" onClick={onClose} disabled={saving}>Cancel</button><button type="submit" className="ops-red-button" disabled={saving}>{saving ? 'Saving…' : <><Check size={15} />Save to company database</>}</button></div>
-    </form></section></div>
+  const targetLabel = target === 'payroll' ? 'Payroll' : target === 'employeeLoan' ? 'Employee loan' : (labels[target as EntryModule]?.title.replace(/s$/, '') || target)
+  const title = isEdit
+    ? `Edit ${targetLabel.toLowerCase()}`
+    : target === 'payroll'
+      ? 'Run monthly payroll'
+      : target === 'employeeLoan'
+        ? 'Issue employee loan'
+        : target === 'assetMaintenance'
+          ? 'Log asset maintenance'
+          : isInvoiceAudit
+            ? 'Record final billing audit'
+            : isPayment
+              ? target === 'invoicePayment'
+                ? 'Record client payment'
+                : target === 'workOrderPayment'
+                  ? 'Record subcontractor payment'
+                  : 'Record expense settlement'
+              : `New ${labels[target as EntryModule]?.title.replace(/s$/, '').toLowerCase() || 'record'}`
+
+  return (
+    <div className="ops-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section className={`ops-modal ${documentModule ? 'ops-modal-document' : ''}`} role="dialog" aria-modal="true" aria-labelledby="entry-dialog-title">
+        <header className="ops-modal-head">
+          <span className="ops-modal-icon">
+            {documentModule ? <FileSpreadsheet size={18} /> : target === 'payroll' ? <Banknote size={18} /> : isPayment ? <Receipt size={18} /> : isEdit ? <Pencil size={18} /> : <Plus size={18} />}
+          </span>
+          <button type="button" className="ops-icon-button" aria-label="Close form" onClick={onClose}><X size={18} /></button>
+          <span className="ops-section-label">REVOXEN ASSOCIATES · PKR</span>
+          <h2 id="entry-dialog-title">{title}</h2>
+          <p>{documentModule ? 'Add every measured item, set each unit and tax rate, then verify the calculated total.' : isPayment ? 'Add a dated payment entry; the remaining balance will be recalculated automatically.' : isEdit ? 'Update existing operational details and commit changes to SQLite.' : 'Enter the operational details. Monetary values are stored as PKR.'}</p>
+        </header>
+        <form className="ops-form" onSubmit={submit}>
+          <div className="ops-form-grid">
+            {fields.map((field) => (
+              <FormField key={field.key} field={field} value={values[field.key] ?? ''} onChange={(value) => setField(field.key, value)} />
+            ))}
+          </div>
+          {documentModule && (
+            <>
+              <div className="ops-line-items-head">
+                <div><span className="ops-section-label">ITEMIZED SCOPE</span><h3>Estimate / invoice lines</h3></div>
+                <button type="button" className="ops-outline-button" onClick={() => setLines((current) => [...current, blankLine()])}><Plus size={14} />Add line</button>
+              </div>
+              <div className="ops-line-scroll">
+                <table className="ops-line-table">
+                  <thead>
+                    <tr><th>ITEM / SCOPE</th><th>LENGTH</th><th>WIDTH</th><th>HEIGHT</th><th>QTY</th><th>NOS</th><th>UNIT</th><th>RATE · PKR</th><th>TAX %</th><th>LINE TOTAL</th><th /></tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((line, index) => {
+                      const measured = Number(line.length) > 0 || Number(line.width) > 0 || Number(line.height) > 0
+                        ? (Number(line.length) || 1) * (Number(line.width) || 1) * (Number(line.height) || 1)
+                        : 1
+                      const lineTotal = measured * Number(line.quantity || 0) * Number(line.nos || 0) * Number(line.rate || 0)
+                      return (
+                        <Fragment key={`line-group-${index}`}>
+                          <tr key={`line-${index}`}>
+                            {(['item','length','width','height','quantity','nos','unit','rate','taxRate'] as const).map((key) => (
+                              <td key={key}>
+                                <input
+                                  aria-label={`${index === 0 ? 'First' : `Line ${index + 1}`} ${key}`}
+                                  required={key === 'item' || key === 'rate'}
+                                  type={['length','width','height','quantity','nos','rate','taxRate'].includes(key) ? 'number' : 'text'}
+                                  min="0"
+                                  step="any"
+                                  value={line[key]}
+                                  onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex === index ? { ...currentLine, [key]: event.target.value } : currentLine))}
+                                  placeholder={key === 'unit' ? 'Each' : key === 'quantity' || key === 'nos' ? '1' : key === 'taxRate' ? '0' : ''}
+                                />
+                              </td>
+                            ))}
+                            <td><strong>{pkr(lineTotal)}</strong></td>
+                            <td>
+                              <button
+                                className="ops-remove-line"
+                                aria-label="Remove line"
+                                type="button"
+                                disabled={lines.length === 1}
+                                onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}
+                              >
+                                <X size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                          <tr key={`description-${index}`} className="ops-line-description">
+                            <td colSpan={11}>
+                              <input
+                                aria-label={`Line ${index + 1} description`}
+                                placeholder="Describe material, finish, grade, dimensions or labor scope…"
+                                value={line.description}
+                                onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex === index ? { ...currentLine, description: event.target.value } : currentLine))}
+                              />
+                            </td>
+                          </tr>
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="ops-total-preview">
+                <span><small>SUBTOTAL</small><strong>{pkr(documentSubtotal)}</strong></span>
+                <span><small>DISCOUNT</small><strong>− {pkr(discount)}</strong></span>
+                <span><small>LINE TAX</small><strong>{pkr(documentTax - documentTax * (documentSubtotal ? discount / documentSubtotal : 0))}</strong></span>
+                <span><small>GRAND TOTAL</small><strong>{pkr(previewTotal)}</strong></span>
+              </div>
+            </>
+          )}
+          {target === 'payroll' && selectedEmployee && (
+            <div className="ops-payroll-preview">
+              <span>ESTIMATED GROSS PAY <strong>{pkr(payrollGross)}</strong></span>
+              <small>Final gross and deductions will be calculated by the payroll service before saving.</small>
+            </div>
+          )}
+          {error && <div className="ops-form-error">{error}</div>}
+          <div className="ops-modal-actions">
+            <button type="button" className="ops-outline-button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="submit" className="ops-red-button" disabled={saving}>
+              {saving ? (isEdit ? 'Updating…' : 'Saving…') : <><Check size={15} />{isEdit ? 'Update record' : 'Save to company database'}</>}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
 }
 
 function FormField({ field, value, onChange }: { field: Field; value: string; onChange: (value: string) => void }) {
@@ -541,9 +1233,23 @@ function FormField({ field, value, onChange }: { field: Field; value: string; on
   return <label className={className}><span>{field.label}{field.required && <i> *</i>}</span>{field.kind === 'textarea' ? <textarea required={field.required} value={value} onChange={(event) => onChange(event.target.value)} rows={2} /> : field.kind === 'select' ? <select required={field.required} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Choose…</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input required={field.required} type={field.kind === 'month' ? 'month' : field.kind ?? 'text'} min={field.min} max={field.max} step={field.step} value={value} onChange={(event) => onChange(event.target.value)} />}{field.hint && <small>{field.hint}</small>}</label>
 }
 
-function apiRoute(module: EntryModule): string {
-  const routes: Record<EntryModule, string> = { leads: 'leads', projects: 'projects', employees: 'employees', assets: 'assets', vendors: 'vendors', workOrders: 'work-orders', projectExpenses: 'expenses', officeExpenses: 'expenses', estimates: 'documents', invoices: 'documents' }
-  return routes[module]
+function apiRoute(module: string): string {
+  const routes: Record<string, string> = {
+    leads: 'leads',
+    projects: 'projects',
+    employees: 'employees',
+    payroll: 'payroll',
+    loans: 'loans',
+    employeeLoan: 'loans',
+    assets: 'assets',
+    vendors: 'vendors',
+    workOrders: 'work-orders',
+    projectExpenses: 'expenses',
+    officeExpenses: 'expenses',
+    estimates: 'documents',
+    invoices: 'documents',
+  }
+  return routes[module] || module
 }
 
 function message(error: unknown) { return error instanceof Error ? error.message : 'The operation could not be completed.' }

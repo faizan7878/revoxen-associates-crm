@@ -1,7 +1,8 @@
 .auth-screen { display: flex; flex-direction: column; min-height: 100vh; padding: 0 6.5vw; color: #202123; background: #f4f4f2; font-family: 'DM Sans', 'Avenir Next', sans-serif; }
-.auth-brand { display: flex; align-items: center; gap: 10px; height: 78px; color: #202123; font-size: 12px; font-weight: 750; letter-spacing: 1.2px; }
-.auth-brand > span:last-child { display: flex; flex-direction: column; gap: 4px; }
-.auth-brand small { color: #898a8c; font-size: 8px; letter-spacing: 1.5px; }
+.auth-brand { display: flex; align-items: center; gap: 12px; height: 78px; color: #202123; font-size: 12px; font-weight: 750; letter-spacing: 1.2px; }
+.auth-brand > span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.auth-brand small { color: #898a8c; font-size: 8.5px; letter-spacing: 1.5px; }
+.auth-brand-logo { width: 38px; height: 38px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
 .auth-brand-mark { position: relative; display: grid; place-items: center; width: 32px; height: 32px; color: white; font: 700 19px 'Manrope', sans-serif; border-radius: 3px; background: #b3202a; }
 .auth-brand-mark i { position: absolute; right: 5px; bottom: 5px; width: 4px; height: 4px; border-radius: 50%; background: white; }
 .auth-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .75fr); align-items: center; gap: 8vw; width: min(100%, 1050px); flex: 1; margin: 0 auto; padding: 36px 0 72px; }
