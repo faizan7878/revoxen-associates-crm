@@ -62,12 +62,30 @@ const text = (value: unknown) => value === null || value === undefined || value 
 const blankLine = (): LineItem => ({ item: '', description: '', length: '', width: '', height: '', quantity: '1', nos: '1', unit: 'Each', rate: '', taxRate: '0' })
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('revoxen_token') : null
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((val, key) => { headers[key] = val })
+    } else if (Array.isArray(init.headers)) {
+      for (const [k, v] of init.headers) headers[k] = v
+    } else {
+      Object.assign(headers, init.headers)
+    }
+  }
   const response = await fetch(`/api${path}`, {
+    credentials: 'include',
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers,
   })
   const result = await response.json().catch(() => ({})) as { error?: string } & T
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`)
+  if (!response.ok) {
+    if (response.status === 401 && path !== '/auth/login' && path !== '/auth/setup' && path !== '/auth/me') {
+      if (typeof window !== 'undefined') localStorage.removeItem('revoxen_token')
+    }
+    throw new Error(result.error || `Request failed (${response.status})`)
+  }
   return result
 }
 
@@ -201,10 +219,28 @@ function OperationsApp() {
         if (!active) return
         if (status.setupRequired) { setAuthMode('setup'); return }
         try {
-          const currentUser = await api<AuthUser>('/auth/me')
-          if (active) { setUser(currentUser); setAuthMode('authenticated') }
-        } catch { if (active) setAuthMode('login') }
-      } catch { if (active) setAuthMode('login') }
+          const res = await api<AuthUser & { user?: AuthUser | null; authenticated?: boolean }>('/auth/me')
+          if (!active) return
+          const authenticatedUser = res && (res.id ? res : res.user)
+          if (authenticatedUser && authenticatedUser.id) {
+            setUser(authenticatedUser)
+            setAuthMode('authenticated')
+          } else {
+            setUser(null)
+            setAuthMode('login')
+          }
+        } catch {
+          if (active) {
+            setUser(null)
+            setAuthMode('login')
+          }
+        }
+      } catch {
+        if (active) {
+          setUser(null)
+          setAuthMode('login')
+        }
+      }
     }
     void checkSession()
     return () => { active = false }
@@ -236,7 +272,18 @@ function OperationsApp() {
   useEffect(() => {
     if (!user) return
     const interval = window.setInterval(() => {
-      fetch('/api/auth/heartbeat', { method: 'POST' }).catch(() => {})
+      const token = typeof window !== 'undefined' ? localStorage.getItem('revoxen_token') : null
+      fetch('/api/auth/heartbeat', {
+        method: 'POST',
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).then((res) => {
+        if (res.status === 401) {
+          localStorage.removeItem('revoxen_token')
+          setUser(null)
+          setAuthMode('login')
+        }
+      }).catch(() => {})
     }, 45000)
     return () => window.clearInterval(interval)
   }, [user])
@@ -276,6 +323,9 @@ function OperationsApp() {
 
   if (authMode === 'checking') return <div className="ops-loading"><span className="ops-spinner" />Checking secure sign-in…</div>
   if (authMode === 'setup' || authMode === 'login') return <AuthScreen setupRequired={authMode === 'setup'} onAuthenticated={(nextUser) => {
+    if ((nextUser as unknown as { token?: string }).token) {
+      localStorage.setItem('revoxen_token', (nextUser as unknown as { token?: string }).token!)
+    }
     setUser(nextUser)
     const firstAllowed = nextUser.role === 'admin' ? 'dashboard' : navGroups.flatMap((group) => group.links.map((link) => link.id)).find((id) => id !== 'users' && nextUser.permissions[id]?.view)
     setModule(firstAllowed ?? 'dashboard')
@@ -285,6 +335,7 @@ function OperationsApp() {
 
   const signOut = async () => {
     try { await api('/auth/logout', { method: 'POST' }) } finally {
+      localStorage.removeItem('revoxen_token')
       setUser(null)
       setData(null)
       setFinance(null)

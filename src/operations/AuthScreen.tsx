@@ -50,11 +50,13 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
       try {
         const res = await fetch('/api/auth/google/callback', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
         })
-        const result = await res.json() as AuthUser & { error?: string }
+        const result = await res.json() as AuthUser & { token?: string; error?: string }
         if (!res.ok) throw new Error(result.error || 'Google sign-in failed.')
+        if (result.token) localStorage.setItem('revoxen_token', result.token)
         onAuthenticated(result)
       } catch (problem) {
         setError(problem instanceof Error ? problem.message : 'Google sign-in failed.')
@@ -72,11 +74,13 @@ export default function AuthScreen({ setupRequired, onAuthenticated }: { setupRe
     try {
       const response = await fetch(`/api/auth/${setupRequired ? 'setup' : 'login'}`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(setupRequired ? { name, email: email.trim(), password } : { email: email.trim(), identifier: email.trim(), password }),
       })
-      const result = await response.json() as AuthUser & { error?: string }
+      const result = await response.json() as AuthUser & { token?: string; error?: string }
       if (!response.ok) throw new Error(result.error || 'Could not sign in.')
+      if (result.token) localStorage.setItem('revoxen_token', result.token)
       onAuthenticated(result)
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Could not connect to the Revoxen database.')

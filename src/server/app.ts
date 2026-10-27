@@ -66,8 +66,8 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
   })
   app.get('/api/auth/me', (request, response) => {
     const user = currentUser(request, db)
-    if (!user) throw new HttpError(401, 'Sign in to continue.')
-    response.json(user)
+    if (!user) return response.json({ authenticated: false, user: null })
+    response.json({ ...user, authenticated: true })
   })
 
   function findUserByIdentifier(identifier: string) {
@@ -1085,6 +1085,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       return db.prepare('SELECT * FROM work_orders WHERE id=?').get(workOrderId)
     })()
     const actUser = currentUser(request, db)
+    if (actUser && order) logActivity(db, actUser.id, 'Recorded Vendor Payment', 'Sublet work orders', `Recorded vendor payment of ${amount.toLocaleString()} PKR for work order ${order.work_order_number}`, request)
     response.status(201).json(result)
   })
 
@@ -1184,6 +1185,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       return db.prepare('SELECT * FROM expense_payments WHERE id=?').get(payment.lastInsertRowid)
     })()
     const actUser = currentUser(request, db)
+    if (actUser && expense) logActivity(db, actUser.id, 'Recorded Expense Payment', 'Expenses', `Recorded expense payment of ${amount.toLocaleString()} PKR for expense ${expense.expense_number}`, request)
     response.status(201).json(result)
   })
 
@@ -1363,16 +1365,16 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const body = objectBody(request)
     const target = db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as Row | undefined
     if (!target) throw new HttpError(404, 'Document not found.')
-    const hasLines = Array.isArray(body.lines) && body.lines.length > 0
-    let subtotal = target.subtotal
-    let discountAmount = body.discount_amount !== undefined ? money(body, 'discount_amount') : target.discount_amount
-    let taxRate = body.tax_rate !== undefined ? percentage(body, 'tax_rate') : target.tax_rate
-    let taxAmount = target.tax_amount
-    let grandTotal = target.grand_total
+    const rawLines = Array.isArray(body.lines) && body.lines.length > 0 ? (body.lines as unknown[]) : null
+    let subtotal = Number(target.subtotal ?? 0)
+    let discountAmount = body.discount_amount !== undefined ? money(body, 'discount_amount') : Number(target.discount_amount ?? 0)
+    let taxRate = body.tax_rate !== undefined ? percentage(body, 'tax_rate') : Number(target.tax_rate ?? 0)
+    let taxAmount = Number(target.tax_amount ?? 0)
+    let grandTotal = Number(target.grand_total ?? 0)
     let parsedLines: ReturnType<typeof calculateDocument>['lines'] = []
 
-    if (hasLines) {
-      const lines = body.lines.map((line: unknown, index: number) => {
+    if (rawLines) {
+      const lines = rawLines.map((line: unknown, index: number) => {
         if (!line || typeof line !== 'object' || Array.isArray(line)) throw new HttpError(400, 'Each line item must be an object.')
         return { ...(line as Row), sortOrder: index }
       })
@@ -1409,7 +1411,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
 
     db.transaction(() => {
       db.prepare(`UPDATE documents SET document_number=@document_number, project_id=@project_id, client_name=@client_name, subject=@subject, issue_date=@issue_date, due_date=@due_date, status=@status, billing_stage=@billing_stage, audit_status=@audit_status, audited_by=@audited_by, audit_date=@audit_date, audit_notes=@audit_notes, subtotal=@subtotal, discount_amount=@discount_amount, tax_rate=@tax_rate, tax_amount=@tax_amount, grand_total=@grand_total, notes=@notes WHERE id=@id`).run(values)
-      if (hasLines && parsedLines.length > 0) {
+      if (rawLines && parsedLines.length > 0) {
         db.prepare('DELETE FROM document_lines WHERE document_id = ?').run(id)
         const insertLine = db.prepare(`INSERT INTO document_lines (document_id,sort_order,item,description,length,width,height,quantity,nos,unit,rate,tax_rate,measured_quantity,line_subtotal,line_tax,line_total)
           VALUES (@documentId,@sortOrder,@item,@description,@length,@width,@height,@quantity,@nos,@unit,@rate,@taxRate,@measuredQuantity,@lineSubtotal,@lineTax,@lineTotal)`)

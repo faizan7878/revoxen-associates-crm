@@ -21,7 +21,23 @@ const money = (value: unknown) => new Intl.NumberFormat('en-PK', { style: 'curre
 const value = (input: unknown) => input === null || input === undefined || input === '' ? '—' : String(input)
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } })
+  const token = typeof window !== 'undefined' ? localStorage.getItem('revoxen_token') : null
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((val, key) => { headers[key] = val })
+    } else if (Array.isArray(init.headers)) {
+      for (const [k, v] of init.headers) headers[k] = v
+    } else {
+      Object.assign(headers, init.headers)
+    }
+  }
+  const response = await fetch(`/api${path}`, {
+    credentials: 'include',
+    ...init,
+    headers,
+  })
   const result = await response.json().catch(() => ({})) as { error?: string } & T
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`)
   return result
