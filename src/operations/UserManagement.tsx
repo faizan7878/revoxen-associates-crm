@@ -6,7 +6,7 @@ import {
   UserRoundPlus, Users, X,
 } from 'lucide-react'
 
-type ModuleId = 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss'
+type ModuleId = 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'engineering' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss'
 type Access = { view: boolean; edit: boolean }
 type Permissions = Partial<Record<ModuleId, Access>>
 
@@ -61,6 +61,7 @@ const modules: { id: ModuleId; label: string }[] = [
   { id: 'leads', label: 'Leads & Pipeline' },
   { id: 'projects', label: 'Projects' },
   { id: 'projectAccounts', label: 'Project accounts' },
+  { id: 'engineering', label: 'Engineering' },
   { id: 'employees', label: 'Employees' },
   { id: 'payroll', label: 'Payroll' },
   { id: 'loans', label: 'Employee loans' },
