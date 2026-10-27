@@ -126,9 +126,11 @@ describe('Revoxen operational API', () => {
     const receipt = await request(app).post(`/api/documents/${invoice.body.id}/payments`).send({ payment_date: '2026-10-06', amount: 300, payment_method: 'Bank transfer' })
     expect([project.status, vendor.status, expense.status, expensePayment.status, order.status, orderPayment.status, invoice.status, receipt.status]).toEqual([201, 201, 201, 201, 201, 201, 201, 201])
 
-    const budget = await request(app).post(`/api/projects/${project.body.id}/budgets`).send({ lines: [
-      { category: 'Materials', description: 'Primary materials', amount: 500 }, { category: 'Labor', description: 'Site labor', amount: 400 },
-    ] })
+    const budget = await request(app).post(`/api/projects/${project.body.id}/budgets`).send({
+      lines: [
+        { category: 'Materials', description: 'Primary materials', amount: 500 }, { category: 'Labor', description: 'Site labor', amount: 400 },
+      ]
+    })
     expect(budget.status).toBe(201)
     expect(budget.body).toMatchObject({ version: 1, total_amount: 900, status: 'Draft' })
     const beforeApproval = await request(app).get(`/api/project-accounts/${project.body.id}`)
