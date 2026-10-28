@@ -12,6 +12,7 @@ import ProjectsSitesManager from './ProjectsSitesManager'
 import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import EngineeringDesk from './EngineeringDesk'
+import ExecutiveDashboard from './ExecutiveDashboard'
 import './operations.css'
 
 type ModuleId = 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'engineering' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss' | 'users'
@@ -32,7 +33,7 @@ const navGroups: { title: string; links: { id: ModuleId; label: string; icon: Lu
 ]
 
 const labels: Record<ModuleId, { title: string; subtitle: string; add?: string }> = {
-  dashboard: { title: 'Lead Source Tracking', subtitle: 'See which channels are generating construction opportunities.' },
+  dashboard: { title: 'Executive Overview', subtitle: 'Company-wide performance analytics and executive financial summary.' },
   leads: { title: 'Lead & Opportunity register', subtitle: 'Channel sources, qualified opportunities, site visits, and proposal stages.', add: 'New lead' },
   projects: { title: 'Projects', subtitle: 'Contract records, project ownership, client, status, and delivery dates.', add: 'New project' },
   projectAccounts: { title: 'Project accounts', subtitle: 'Budgets, audited approvals, committed costs, payments, and client receipts by project.' },
@@ -401,44 +402,8 @@ function OperationsApp() {
   </div>
 }
 
-function Dashboard({ data, finance, onNavigate, period, setPeriod, canView, canEdit }: { data: Bootstrap; finance: Finance | null; onNavigate: (id: ModuleId) => void; period: string; setPeriod: (value: string) => void; canView: (id: ModuleId) => boolean; canEdit: (id: ModuleId) => boolean }) {
-  const [dashboardView, setDashboardView] = useState<'leadSource' | 'operational'>('leadSource')
-
-  if (!canView('dashboard') && !canView('leads') && !canView('projects') && !canView('employees') && !canView('payroll') && !canView('loans') && !canView('assets') && !canView('vendors') && !canView('workOrders') && !canView('projectExpenses') && !canView('officeExpenses') && !canView('estimates') && !canView('invoices') && !canView('profitLoss')) {
-    return <section className="ops-no-access"><ShieldCheck size={21} /><h2>No sections assigned</h2><p>Ask your administrator to enable the CRM sections you need.</p></section>
-  }
-
-  if (dashboardView === 'leadSource') {
-    return (
-      <LeadSourceTracking
-        onNavigate={onNavigate}
-        onSwitchToOperations={() => setDashboardView('operational')}
-        leadsData={data.leads}
-        canEdit={canEdit('leads')}
-      />
-    )
-  }
-
-  const metrics = [
-    { module: 'projects' as const, label: 'ACTIVE PROJECTS', value: data.projects.filter((project) => project.status !== 'Completed').length, detail: `${data.projects.length} total projects`, icon: BriefcaseBusiness, tone: 'red' },
-    { module: 'projects' as const, label: 'MONTHLY CONTRACTS', value: pkr(data.projects.reduce((sum, project) => sum + Number(project.contract_amount || 0), 0)), detail: 'Recorded project value', icon: CircleDollarSign, tone: 'gray' },
-    { module: 'payroll' as const, label: 'EMPLOYEE PAYROLL', value: pkr(data.payroll.filter((run) => run.pay_period === period).reduce((sum, run) => sum + Number(run.gross_salary || 0), 0)), detail: `${data.employees.length} registered employees`, icon: UsersRound, tone: 'black' },
-    { module: 'profitLoss' as const, label: 'INVOICE RECEIVABLES', value: pkr(finance?.receivables ?? 0), detail: 'Outstanding client balance', icon: Receipt, tone: 'light' },
-  ].filter(({ module }) => canView(module))
-
-  return <>
-    <div className="lst-sub-banner" style={{ marginBottom: 14 }}>
-      <span>Showing Financial &amp; Operations Overview</span>
-      <button onClick={() => setDashboardView('leadSource')}>
-        <PieIcon size={14} /> Back to Lead Source Tracking
-      </button>
-    </div>
-    {canView('profitLoss') && <div className="ops-period-strip"><CalendarDays size={15} /><span>Period view</span><input aria-label="Dashboard month" type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /><button onClick={() => onNavigate('profitLoss')}>Open period P&L <ArrowRight size={13} /></button></div>}
-    <section className="ops-metric-grid">{metrics.map(({ label, value, detail, icon: Icon, tone }) => <article className="ops-metric" key={label}><div className="ops-metric-head"><span>{label}</span><i className={`ops-metric-icon metric-${tone}`}><Icon size={16} /></i></div><strong>{value}</strong><small>{detail}</small></article>)}</section>
-    <div className="ops-overview-grid">{canView('profitLoss') && <section className="ops-panel ops-pnl-panel"><div className="ops-panel-head"><div><span className="ops-section-label">MONTH-TO-DATE</span><h2>Income & expenditure</h2></div><button className="ops-text-link" onClick={() => onNavigate('profitLoss')}>Full statement <ArrowRight size={14} /></button></div><div className="ops-pnl-summary"><div><span>INVOICED INCOME</span><strong>{pkr(finance?.revenue)}</strong></div><div><span>OPERATING COSTS</span><strong>{pkr(finance?.totalOperatingExpenses)}</strong></div><div className={(finance?.profitOrLoss ?? 0) < 0 ? 'pnl-loss' : 'pnl-profit'}><span>NET PROFIT / (LOSS)</span><strong>{pkr(finance?.profitOrLoss)}</strong></div></div><div className="ops-mini-bars">{[0.58, 0.82, 0.47, 0.92, 0.68, 0.38, 0.75, 0.56, 1, 0.63, 0.44, 0.81].map((height, index) => <div key={index}><i style={{ height: `${height * 100}%` }} /><span>{['J','F','M','A','M','J','J','A','S','O','N','D'][index]}</span></div>)}</div></section>}
-      {canEdit('projectExpenses') || canEdit('officeExpenses') || canEdit('invoices') || canEdit('employees') || canEdit('assets') ? <section className="ops-panel ops-quick-panel"><div className="ops-panel-head"><div><span className="ops-section-label">DAILY ENTRY</span><h2>Quick actions</h2></div><span className="ops-action-chip">PKR</span></div><div className="ops-quick-list">{[['Project expense', 'projectExpenses', Receipt], ['Office expense', 'officeExpenses', Banknote], ['New invoice', 'invoices', FileSpreadsheet], ['Add employee', 'employees', UsersRound], ['Register asset', 'assets', Package]].filter(([, id]) => canEdit(id as ModuleId)).map(([label, id, icon]) => { const Icon = icon as LucideIcon; return <button key={String(id)} onClick={() => onNavigate(id as ModuleId)}><Icon size={15} /><span>{String(label)}</span><ArrowRight size={13} /></button> })}</div></section> : null}</div>
-    {(canView('projects') || canView('profitLoss')) && <div className="ops-overview-grid ops-overview-bottom">{canView('projects') && <section className="ops-panel"><div className="ops-panel-head"><div><span className="ops-section-label">PROJECT DELIVERY</span><h2>Active jobs</h2></div><button className="ops-text-link" onClick={() => onNavigate('projects')}>All projects <ArrowRight size={14} /></button></div><DataTable rows={data.projects.filter((project) => project.status !== 'Completed').slice(0, 5)} columns={[[ 'project_code','CODE'],['name','PROJECT'],['client','CLIENT'],['contract_amount','CONTRACT'],['status','STATUS']]} /></section>}{canView('profitLoss') && <section className="ops-panel"><div className="ops-panel-head"><div><span className="ops-section-label">CASH CONTROL</span><h2>Where the money goes</h2></div><button className="ops-text-link" onClick={() => onNavigate('profitLoss')}>P&amp;L <ArrowRight size={14} /></button></div><div className="ops-money-list">{[['Project expenses', finance?.projectExpenses], ['Office & general', finance?.generalExpenses], ['Gross payroll cost', finance?.payrollCost], ['Subcontractor payments', finance?.vendorPayments], ['Monthly depreciation', finance?.depreciation]].map(([label, amount]) => <div key={String(label)}><span>{String(label)}</span><strong>{pkr(amount)}</strong></div>)}</div></section>}</div>}
-  </>
+function Dashboard({ data, finance, onNavigate, period, setPeriod, canView }: { data: Bootstrap; finance: Finance | null; onNavigate: (id: ModuleId) => void; period: string; setPeriod: (value: string) => void; canView: (id: ModuleId) => boolean; canEdit: (id: ModuleId) => boolean }) {
+  return <ExecutiveDashboard data={data} finance={finance} onNavigate={onNavigate} period={period} setPeriod={setPeriod} canView={canView} />
 }
 
 function ExpenseControlSummary({ kind, expenses }: { kind: 'Project' | 'General'; expenses: Entry[] }) {
