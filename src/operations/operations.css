@@ -555,3 +555,188 @@
     display: none !important;
   }
 }
+/* ==========================================================================
+   Advanced Glassmorphism UI Theme Upgrade
+   ========================================================================== */
+
+.ops-shell {
+  background: transparent !important;
+  color: #f1f5f9 !important;
+}
+
+.ops-sidebar {
+  background: rgba(3, 7, 18, 0.75) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-brand {
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-company {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-nav-link {
+  color: #94a3b8 !important;
+}
+
+.ops-nav-link:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.ops-nav-active, .ops-nav-active:hover {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.15)) !important;
+  border: 1px solid rgba(129, 140, 248, 0.35) !important;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+.ops-nav-active::before {
+  background: #818cf8 !important;
+}
+
+.ops-sidebar-foot, .ops-profile {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-topbar {
+  background: rgba(3, 7, 18, 0.65) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-crumb strong {
+  color: #f1f5f9 !important;
+}
+
+.ops-search {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #94a3b8 !important;
+}
+
+.ops-search input {
+  color: #ffffff !important;
+}
+
+.ops-search kbd {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #94a3b8 !important;
+}
+
+.ops-icon-button {
+  color: #94a3b8 !important;
+}
+
+.ops-icon-button:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-heading h1 {
+  color: #ffffff !important;
+  text-shadow: 0 0 25px rgba(255, 255, 255, 0.15);
+}
+
+.ops-heading > div > p {
+  color: #94a3b8 !important;
+}
+
+.ops-panel, .ops-metric, .ops-period-strip, .ops-accounting-note {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ops-panel:hover, .ops-metric:hover {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.ops-panel-head h2, .ops-metric > strong, .ops-money, .ops-primary-cell {
+  color: #ffffff !important;
+}
+
+.ops-metric-head, .ops-section-label, .ops-crumb, .ops-footer {
+  color: #94a3b8 !important;
+}
+
+.ops-table th {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-table td {
+  color: #cbd5e1 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.ops-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.ops-outline-button {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f1f5f9 !important;
+}
+
+.ops-outline-button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.ops-modal {
+  background: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(30px) !important;
+  -webkit-backdrop-filter: blur(30px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6) !important;
+  color: #f1f5f9 !important;
+}
+
+.ops-modal-head {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-modal-head h2 {
+  color: #ffffff !important;
+}
+
+.ops-field input, .ops-field select, .ops-field textarea {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.ops-field > span {
+  color: #cbd5e1 !important;
+}
+
+.ops-table-actions-toolbar {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ops-tool-btn {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #e2e8f0 !important;
+}
+
+.ops-tool-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
