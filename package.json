@@ -22,12 +22,14 @@
     "express": "^5.3.0",
     "google-auth-library": "^11.3.1",
     "lucide-react": "^1.59.0",
+    "multer": "^2.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

@@ -1,4 +1,7 @@
 import request from 'supertest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from './app.js'
 import { calculateDocument, calculatePayroll, openDatabase, type Db } from './db.js'
@@ -234,6 +237,20 @@ describe('authentication and access control', () => {
     expect((await viewer.get('/api/bootstrap')).body.projects).toEqual([])
     expect((await viewer.get('/api/bootstrap')).body.employees).toEqual([])
 
+    const project = await admin.post('/api/projects').send({ project_code: 'RX-ENG-1', name: 'Engineering access project', client: 'Private client', contract_amount: 987654 })
+    const engineeringUser = await admin.post('/api/users').send({
+      name: 'Engineering Viewer', email: 'engineering@example.com', password: 'secure-engineering-pass',
+      permissions: { engineering: { view: true, edit: false } },
+    })
+    expect(engineeringUser.status).toBe(201)
+    const engineeringViewer = request.agent(app)
+    expect((await engineeringViewer.post('/api/auth/login').send({ email: 'engineering@example.com', password: 'secure-engineering-pass' })).status).toBe(200)
+    const engineeringBootstrap = (await engineeringViewer.get('/api/bootstrap')).body
+    expect(engineeringBootstrap.projects).toEqual([])
+    expect(engineeringBootstrap.engineeringProjects).toEqual([{ id: project.body.id, project_code: 'RX-ENG-1', name: 'Engineering access project' }])
+    expect((await engineeringViewer.get(`/api/projects/${project.body.id}/drawings`)).status).toBe(200)
+    expect((await engineeringViewer.post(`/api/projects/${project.body.id}/drawings`).field('drawing_no', 'ARC-1')).status).toBe(403)
+
     expect((await admin.post(`/api/users/${created.body.id}/password`).send({ password: 'reset-viewer-pass' })).status).toBe(204)
     expect((await viewer.get('/api/projects')).status).toBe(401)
     const signedInAgain = request.agent(app)
@@ -335,5 +352,77 @@ describe('authentication and access control', () => {
     expect(leadActivity.module).toBe('Leads')
     expect(leadActivity.description).toContain('Luxury Residence Villa')
     expect(leadActivity.device).toContain('iPhone')
+  })
+})
+
+describe('project drawings and estimate references', () => {
+  let db: Db
+  let app: ReturnType<typeof createApp>
+  let drawingDirectory: string
+
+  beforeEach(() => {
+    db = openDatabase(':memory:')
+    drawingDirectory = mkdtempSync(join(tmpdir(), 'revoxen-project-drawings-'))
+    app = createApp(db, { authentication: false, drawingStorageDir: drawingDirectory })
+  })
+
+  afterEach(() => {
+    db.close()
+    rmSync(drawingDirectory, { recursive: true, force: true })
+  })
+
+  it('stores original files by project, preserves revisions, and links only matching revisions to estimates', async () => {
+    const project = await request(app).post('/api/projects').send({ project_code: 'RX-DWG-1', name: 'Drawing project', client: 'Client', client_contact: 'Client PM', client_email: 'pm@example.com', scope_of_work: 'Ground floor and structure', priority: 'High', contract_amount: 900000 })
+    const otherProject = await request(app).post('/api/projects').send({ project_code: 'RX-DWG-2', name: 'Other project', client: 'Other client' })
+    expect(project.body).toMatchObject({ client_contact: 'Client PM', client_email: 'pm@example.com', scope_of_work: 'Ground floor and structure', priority: 'High' })
+    const updatedProject = await request(app).put(`/api/projects/${project.body.id}`).send({ priority: 'Critical', actual_completion_date: '2027-01-30', project_specifications: 'Concrete grade 40 MPa' })
+    expect(updatedProject.body).toMatchObject({ priority: 'Critical', actual_completion_date: '2027-01-30', project_specifications: 'Concrete grade 40 MPa' })
+    const projectProfile = await request(app).get(`/api/projects/${project.body.id}/profile`)
+    expect(projectProfile.body.project).toMatchObject({ project_code: 'RX-DWG-1', client_contact: 'Client PM', priority: 'Critical' })
+    const firstFile = Buffer.from('%PDF-1.7\nDrawing revision A\n%%EOF')
+    const first = await request(app).post(`/api/projects/${project.body.id}/drawings`)
+      .field('drawing_no', 'ARC-101').field('title', 'Ground floor plan').field('category', 'Architectural')
+      .field('revision', 'A').field('description', 'Issued for pricing')
+      .attach('file', firstFile, { filename: 'ground-floor.pdf', contentType: 'application/pdf' })
+    expect(first.status).toBe(201)
+    expect(first.body).toMatchObject({ project_id: project.body.id, drawing_no: 'ARC-101', revision: 'A', original_name: 'ground-floor.pdf', file_size: firstFile.length })
+    const preview = await request(app).get(`/api/project-drawings/${first.body.id}/file?preview=1`)
+    expect(preview.status).toBe(200)
+    expect(preview.headers['content-disposition']).toContain('inline')
+    const download = await request(app).get(`/api/project-drawings/${first.body.id}/file`)
+    expect(download.headers['content-disposition']).toContain('attachment')
+
+    const second = await request(app).post(`/api/projects/${project.body.id}/drawings`)
+      .field('drawing_no', 'ARC-101').field('title', 'Ground floor plan').field('category', 'Architectural').field('revision', 'B')
+      .attach('file', Buffer.from('%PDF-1.7\nDrawing revision B\n%%EOF'), { filename: 'ground-floor-rev-b.pdf', contentType: 'application/pdf' })
+    expect(second.status).toBe(201)
+    const duplicate = await request(app).post(`/api/projects/${project.body.id}/drawings`)
+      .field('drawing_no', 'ARC-101').field('title', 'Duplicate').field('category', 'Architectural').field('revision', 'A')
+      .attach('file', Buffer.from('%PDF-1.7\nDuplicate\n%%EOF'), { filename: 'duplicate.pdf', contentType: 'application/pdf' })
+    expect(duplicate.status).toBe(409)
+    expect((await request(app).post(`/api/projects/${project.body.id}/drawings`)
+      .field('drawing_no', 'BAD-1').field('title', 'Unsupported').field('category', 'Other').field('revision', 'A')
+      .attach('file', Buffer.from('not a drawing'), { filename: '../../run.exe', contentType: 'application/octet-stream' })).status).toBe(400)
+
+    const estimatePayload = {
+      document_number: 'EST-DWG-1', document_type: 'Estimate', project_id: project.body.id, drawing_ids: [second.body.id],
+      client_name: 'Client', subject: 'Ground floor works', issue_date: '2026-11-16',
+      lines: [{ item: 'Concrete', quantity: 1, nos: 1, rate: 1000, taxRate: 0 }],
+    }
+    const estimate = await request(app).post('/api/documents').send(estimatePayload)
+    expect(estimate.status).toBe(201)
+    const detail = await request(app).get(`/api/documents/${estimate.body.id}`)
+    expect(detail.body.drawings).toMatchObject([{ id: second.body.id, project_id: project.body.id, revision: 'B' }])
+    const editedEstimate = await request(app).put(`/api/documents/${estimate.body.id}`).send({ drawing_ids: [first.body.id] })
+    expect(editedEstimate.status).toBe(200)
+    expect(editedEstimate.body.drawings).toMatchObject([{ id: first.body.id, project_id: project.body.id, revision: 'A' }])
+    const wrongProjectEstimate = await request(app).post('/api/documents').send({ ...estimatePayload, document_number: 'EST-DWG-X', project_id: otherProject.body.id })
+    expect(wrongProjectEstimate.status).toBe(400)
+    expect((await request(app).put(`/api/documents/${estimate.body.id}`).send({ project_id: otherProject.body.id, drawing_ids: [first.body.id] })).status).toBe(400)
+
+    const revisions = await request(app).get(`/api/projects/${project.body.id}/drawings`)
+    expect(revisions.body.map((drawing: { revision: string }) => drawing.revision)).toEqual(['B', 'A'])
+    expect((await request(app).delete(`/api/project-drawings/${first.body.id}`)).status).toBe(204)
+    expect((await request(app).get(`/api/projects/${project.body.id}/drawings`)).body.map((drawing: { revision: string }) => drawing.revision)).toEqual(['B'])
   })
 })

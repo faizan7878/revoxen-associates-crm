@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useEffect, type FormEvent } from 'react'
 import {
   Compass, Calculator, Layers, Plus, Search, Download, Trash2,
   Boxes, FileSpreadsheet, Copy, Check, Eye, X, FileCode, Printer,
@@ -28,19 +28,35 @@ export interface BoqItem {
 
 export interface DrawingItem {
   id: string
+  serverId: number
   drawingNo: string
   title: string
   projectId: string
   projectName: string
-  discipline: 'Architectural' | 'Structural' | 'MEP' | 'BIM 3D' | 'Civil'
-  fileFormat: 'DWG' | 'RVT' | 'IFC' | 'PDF' | 'DXF'
+  category: string
+  discipline: string
+  fileFormat: string
   revision: string
   scale: string
   sheetSize: string
   fileSize: string
-  status: 'Issued for Construction' | 'Approved' | 'Under Review' | 'Tender Archive'
+  status: string
   author: string
   uploadDate: string
+  originalName: string
+  mimeType: string
+}
+
+type DrawingRecord = { id: number; project_id: number; drawing_no: string; title: string; category: string; description: string; revision: string; scale: string; sheet_size: string; mime_type: string; file_size: number; status: string; uploaded_by: string; uploaded_at: string; original_name: string }
+
+async function engineeringApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = localStorage.getItem('revoxen_token')
+  const headers = new Headers(init?.headers)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const response = await fetch(`/api${path}`, { credentials: 'include', ...init, headers })
+  const result = await response.json().catch(() => ({})) as { error?: string } & T
+  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`)
+  return result
 }
 
 interface ProjectOption {
@@ -52,13 +68,6 @@ interface ProjectOption {
 // ============================================================================
 // Initial Seed Data
 // ============================================================================
-
-const defaultProjects: ProjectOption[] = [
-  { id: 'PRJ-101', name: 'Gulberg Executive Tower (G+18)' },
-  { id: 'PRJ-102', name: 'DHA Commercial Complex Ring Road' },
-  { id: 'PRJ-103', name: 'Multan Industrial Logistics Warehouse' },
-  { id: 'PRJ-104', name: 'Lake City Luxury Residential Villas' },
-]
 
 const initialBoqItems: BoqItem[] = [
   {
@@ -141,105 +150,6 @@ const initialBoqItems: BoqItem[] = [
   },
 ]
 
-const initialDrawings: DrawingItem[] = [
-  {
-    id: 'DWG-1',
-    drawingNo: 'STR-FND-01',
-    title: 'Raft Foundation General Layout & Rebar Schedule',
-    projectId: 'PRJ-101',
-    projectName: 'Gulberg Executive Tower (G+18)',
-    discipline: 'Structural',
-    fileFormat: 'DWG',
-    revision: 'Rev C',
-    scale: '1:100',
-    sheetSize: 'A0',
-    fileSize: '14.8 MB',
-    status: 'Issued for Construction',
-    author: 'Engr. Zafar Iqbal (PE)',
-    uploadDate: '2026-10-22'
-  },
-  {
-    id: 'DWG-2',
-    drawingNo: 'ARC-TYP-05',
-    title: 'Typical Floor Architectural Layout & Partition Details',
-    projectId: 'PRJ-101',
-    projectName: 'Gulberg Executive Tower (G+18)',
-    discipline: 'Architectural',
-    fileFormat: 'PDF',
-    revision: 'Rev B',
-    scale: '1:50',
-    sheetSize: 'A1',
-    fileSize: '8.4 MB',
-    status: 'Approved',
-    author: 'Ar. Hina Tariq',
-    uploadDate: '2026-10-20'
-  },
-  {
-    id: 'DWG-3',
-    drawingNo: 'BIM-FED-18',
-    title: '3D BIM Federated Model (Architectural + Structural + MEP)',
-    projectId: 'PRJ-101',
-    projectName: 'Gulberg Executive Tower (G+18)',
-    discipline: 'BIM 3D',
-    fileFormat: 'RVT',
-    revision: 'Rev 2.4',
-    scale: '1:1 (3D)',
-    sheetSize: 'Navisworks / Revit',
-    fileSize: '184.2 MB',
-    status: 'Issued for Construction',
-    author: 'BIM Lead Khurram',
-    uploadDate: '2026-10-24'
-  },
-  {
-    id: 'DWG-4',
-    drawingNo: 'MEP-HVAC-02',
-    title: 'Basement Ventilation & Chilled Water Piping Riser',
-    projectId: 'PRJ-102',
-    projectName: 'DHA Commercial Complex Ring Road',
-    discipline: 'MEP',
-    fileFormat: 'IFC',
-    revision: 'Rev A',
-    scale: '1:100',
-    sheetSize: 'A1',
-    fileSize: '24.6 MB',
-    status: 'Under Review',
-    author: 'Engr. Salman Farooq',
-    uploadDate: '2026-10-25'
-  },
-  {
-    id: 'DWG-5',
-    drawingNo: 'STR-COL-08',
-    title: 'Column Reinforcement & Beam-Column Joint Details Floor 1-5',
-    projectId: 'PRJ-102',
-    projectName: 'DHA Commercial Complex Ring Road',
-    discipline: 'Structural',
-    fileFormat: 'DWG',
-    revision: 'Rev B',
-    scale: '1:25',
-    sheetSize: 'A0',
-    fileSize: '12.1 MB',
-    status: 'Approved',
-    author: 'Engr. Usman Tariq',
-    uploadDate: '2026-10-18'
-  },
-  {
-    id: 'DWG-6',
-    drawingNo: 'CIV-SIT-01',
-    title: 'Master Site Boundary Survey & Stormwater Drainage Layout',
-    projectId: 'PRJ-103',
-    projectName: 'Multan Industrial Logistics Warehouse',
-    discipline: 'Civil',
-    fileFormat: 'DXF',
-    revision: 'Rev 0',
-    scale: '1:500',
-    sheetSize: 'A0',
-    fileSize: '6.2 MB',
-    status: 'Tender Archive',
-    author: 'Surveyor Noman',
-    uploadDate: '2026-10-15'
-  },
-]
-
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -253,15 +163,12 @@ export default function EngineeringDesk({
 }) {
   const [activeTab, setActiveTab] = useState<EngineeringTab>('boq')
 
-  // Combine DB projects with default sample projects
   const projectList: ProjectOption[] = useMemo(() => {
-    if (!projects || projects.length === 0) return defaultProjects
-    const mapped = projects.map((p) => ({
+    return projects.map((p) => ({
       id: String(p.id || p.project_code || ''),
       name: String(p.name || p.project_code || 'Unnamed Project'),
       project_code: typeof p.project_code === 'string' ? p.project_code : undefined
     }))
-    return mapped.length ? mapped : defaultProjects
   }, [projects])
 
   // --------------------------------------------------------------------------
@@ -323,14 +230,10 @@ export default function EngineeringDesk({
   // --------------------------------------------------------------------------
   // Submodule 3: BIM & Drawings State
   // --------------------------------------------------------------------------
-  const [drawings, setDrawings] = useState<DrawingItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('revoxen_bim_drawings')
-      return saved ? JSON.parse(saved) : initialDrawings
-    } catch {
-      return initialDrawings
-    }
-  })
+  const [drawings, setDrawings] = useState<DrawingItem[]>([])
+  const [drawingReloadKey, setDrawingReloadKey] = useState(0)
+  const [drawingLoading, setDrawingLoading] = useState(false)
+  const [drawingError, setDrawingError] = useState('')
 
   const [drawingDisciplineFilter, setDrawingDisciplineFilter] = useState<string>('all')
   const [drawingProjectFilter, setDrawingProjectFilter] = useState<string>('all')
@@ -343,12 +246,12 @@ export default function EngineeringDesk({
   const [formDwgTitle, setFormDwgTitle] = useState('')
   const [formDwgProjectId, setFormDwgProjectId] = useState('')
   const [formDwgDiscipline, setFormDwgDiscipline] = useState<DrawingItem['discipline']>('Structural')
-  const [formDwgFormat, setFormDwgFormat] = useState<DrawingItem['fileFormat']>('DWG')
   const [formDwgRevision, setFormDwgRevision] = useState('Rev A')
   const [formDwgScale, setFormDwgScale] = useState('1:100')
   const [formDwgSheet, setFormDwgSheet] = useState('A1')
   const [formDwgStatus, setFormDwgStatus] = useState<DrawingItem['status']>('Issued for Construction')
-  const [formDwgAuthor, setFormDwgAuthor] = useState('Site Engineer')
+  const [drawingFile, setDrawingFile] = useState<File | null>(null)
+  const [drawingSaving, setDrawingSaving] = useState(false)
 
   // Save helpers
   const saveBoqItems = (items: BoqItem[]) => {
@@ -356,10 +259,39 @@ export default function EngineeringDesk({
     try { localStorage.setItem('revoxen_boq_items', JSON.stringify(items)) } catch {}
   }
 
-  const saveDrawings = (items: DrawingItem[]) => {
-    setDrawings(items)
-    try { localStorage.setItem('revoxen_bim_drawings', JSON.stringify(items)) } catch {}
-  }
+  useEffect(() => {
+    let active = true
+    const loadDrawings = async () => {
+      setDrawingLoading(true)
+      setDrawingError('')
+      try {
+        const grouped = await Promise.all(projectList.map(async (project) => {
+          const records = await engineeringApi<DrawingRecord[]>(`/projects/${project.id}/drawings`)
+          return records.map((record): DrawingItem => {
+            const extension = record.original_name.split('.').pop()?.toUpperCase() || 'FILE'
+            const category = record.category
+            const discipline = ['Structural','Foundation','Reinforcement'].includes(category) ? 'Structural'
+              : ['Electrical','Plumbing','HVAC','Mechanical'].includes(category) ? 'MEP'
+                : ['Civil','Site Plan'].includes(category) ? 'Civil'
+                  : ['IFC','RVT'].includes(extension) ? 'BIM 3D' : 'Architectural'
+            return {
+              id: String(record.id), serverId: record.id, drawingNo: record.drawing_no, title: record.title,
+              projectId: String(record.project_id), projectName: project.name, category, discipline,
+              fileFormat: extension, revision: record.revision, scale: record.scale, sheetSize: record.sheet_size,
+              fileSize: record.file_size >= 1024 * 1024 ? `${(record.file_size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(record.file_size / 1024))} KB`,
+              status: record.status, author: record.uploaded_by, uploadDate: record.uploaded_at.slice(0, 10),
+              originalName: record.original_name, mimeType: record.mime_type,
+            }
+          })
+        }))
+        if (active) setDrawings(grouped.flat())
+      } catch (problem) {
+        if (active) { setDrawings([]); setDrawingError(problem instanceof Error ? problem.message : 'Could not load project drawings.') }
+      } finally { if (active) setDrawingLoading(false) }
+    }
+    const timer = window.setTimeout(() => { void loadDrawings() }, 0)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [projectList, drawingReloadKey])
 
   // --------------------------------------------------------------------------
   // Filtered BOQ calculations
@@ -630,81 +562,63 @@ Masonry Volume: ${brickResults.wallVolCft} cft
     })
   }, [drawings, drawingProjectFilter, drawingDisciplineFilter, drawingSearch])
 
-  // Download simulation
   const handleDownloadDrawing = (dwg: DrawingItem) => {
-    const dummyContent = `REVOXEN ASSOCIATES - ENGINEERING DESK
-ARCHIVE DRAWING METADATA
-=========================================================
-Drawing Number: ${dwg.drawingNo}
-Title         : ${dwg.title}
-Project       : ${dwg.projectName}
-Discipline    : ${dwg.discipline}
-Format        : ${dwg.fileFormat}
-Revision      : ${dwg.revision}
-Status        : ${dwg.status}
-Scale         : ${dwg.scale}
-Sheet Size    : ${dwg.sheetSize}
-Approved By   : ${dwg.author}
-Upload Date   : ${dwg.uploadDate}
-File Size     : ${dwg.fileSize}
-=========================================================
-This file contains the verified engineering specification and
-CAD/BIM coordination layer parameters for Revoxen Construction CRM.
-`
-    const blob = new Blob([dummyContent], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = url
-    link.download = `${dwg.drawingNo}_${dwg.revision}.${dwg.fileFormat.toLowerCase()}`
+    link.href = `/api/project-drawings/${dwg.serverId}/file`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    URL.revokeObjectURL(url)
   }
 
   const handleOpenDrawingModal = () => {
     const nextNum = drawings.length + 1
     setFormDwgNo(`STR-SHT-${String(nextNum).padStart(2, '0')}`)
     setFormDwgTitle('')
-    setFormDwgProjectId(projectList[0]?.id ? String(projectList[0].id) : 'PRJ-101')
+    setFormDwgProjectId(projectList[0]?.id ? String(projectList[0].id) : '')
     setFormDwgDiscipline('Structural')
-    setFormDwgFormat('DWG')
     setFormDwgRevision('Rev A')
     setFormDwgScale('1:100')
     setFormDwgSheet('A1')
-    setFormDwgStatus('Issued for Construction')
-    setFormDwgAuthor('Site Engineer')
+    setFormDwgStatus('Under Review')
+    setDrawingFile(null)
+    setDrawingError('')
     setShowDrawingModal(true)
   }
 
-  const handleSaveDrawing = (e: FormEvent) => {
+  const handleSaveDrawing = async (e: FormEvent) => {
     e.preventDefault()
-    const p = projectList.find((prj) => String(prj.id) === String(formDwgProjectId)) || projectList[0]
-    const newDrawing: DrawingItem = {
-      id: `DWG-${Date.now()}`,
-      drawingNo: formDwgNo.trim() || `DWG-${Date.now().toString().slice(-4)}`,
-      title: formDwgTitle.trim() || 'Untitled Engineering Drawing',
-      projectId: String(p?.id || 'PRJ-101'),
-      projectName: p?.name || 'Main Project',
-      discipline: formDwgDiscipline,
-      fileFormat: formDwgFormat,
-      revision: formDwgRevision,
-      scale: formDwgScale,
-      sheetSize: formDwgSheet,
-      fileSize: `${(Math.random() * 15 + 4).toFixed(1)} MB`,
-      status: formDwgStatus,
-      author: formDwgAuthor.trim() || 'Engineering Team',
-      uploadDate: new Date().toISOString().split('T')[0],
-    }
-    saveDrawings([newDrawing, ...drawings])
-    setShowDrawingModal(false)
+    if (!drawingFile || !formDwgProjectId) { setDrawingError('Choose a project and attach the original drawing file.'); return }
+    setDrawingSaving(true)
+    setDrawingError('')
+    try {
+      const form = new FormData()
+      form.append('file', drawingFile)
+      form.append('drawing_no', formDwgNo.trim())
+      form.append('title', formDwgTitle.trim())
+      form.append('category', formDwgDiscipline === 'MEP' ? 'Mechanical' : formDwgDiscipline === 'BIM 3D' ? 'Other' : formDwgDiscipline)
+      form.append('revision', formDwgRevision.trim())
+      form.append('scale', formDwgScale.trim())
+      form.append('sheet_size', formDwgSheet.trim())
+      form.append('scale', formDwgScale.trim())
+      form.append('sheet_size', formDwgSheet.trim())
+      const token = localStorage.getItem('revoxen_token')
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+      const response = await fetch(`/api/projects/${formDwgProjectId}/drawings`, { method: 'POST', credentials: 'include', headers, body: form })
+      const uploaded = await response.json() as { id?: number; error?: string }
+      if (!response.ok || !uploaded.id) throw new Error(uploaded.error || `Upload failed (${response.status}).`)
+      if (formDwgStatus !== 'Under Review') await engineeringApi(`/project-drawings/${uploaded.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: formDwgStatus }) })
+      setDrawingReloadKey((key) => key + 1)
+      setShowDrawingModal(false)
+    } catch (problem) { setDrawingError(problem instanceof Error ? problem.message : 'Drawing upload failed.') }
+    finally { setDrawingSaving(false) }
   }
 
   const handleDeleteDrawing = (id: string) => {
     if (window.confirm('Delete this drawing from the archive?')) {
-      const updated = drawings.filter((d) => d.id !== id)
-      saveDrawings(updated)
-      if (viewingDrawing?.id === id) setViewingDrawing(null)
+      void engineeringApi(`/project-drawings/${id}`, { method: 'DELETE' }).then(() => {
+        setDrawingReloadKey((key) => key + 1)
+        if (viewingDrawing?.id === id) setViewingDrawing(null)
+      }).catch((problem) => setDrawingError(problem instanceof Error ? problem.message : 'Could not archive drawing.'))
     }
   }
 
@@ -1488,6 +1402,8 @@ CAD/BIM coordination layer parameters for Revoxen Construction CRM.
       {/* =================================================================== */}
       {activeTab === 'bim' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {drawingError && <div className="ops-error"><span>{drawingError}</span><button type="button" onClick={() => setDrawingReloadKey((key) => key + 1)}>Retry</button></div>}
+          {drawingLoading && <div className="ops-loading"><span className="ops-spinner" />Loading project drawings…</div>}
           {/* Drawing Stats */}
           <div className="lst-stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
             <div className="lst-stat-card" style={{ borderLeft: '3px solid #4338ca' }}>
@@ -1722,7 +1638,7 @@ CAD/BIM coordination layer parameters for Revoxen Construction CRM.
                                   display: 'grid',
                                   placeItems: 'center'
                                 }}
-                                title="Delete Drawing"
+                                title="Archive drawing revision"
                               >
                                 <Trash2 size={13} />
                               </button>
@@ -2001,19 +1917,13 @@ CAD/BIM coordination layer parameters for Revoxen Construction CRM.
 
                   <div>
                     <label style={{ fontSize: '11px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                      Format *
+                      Original drawing file *
                     </label>
-                    <select
-                      value={formDwgFormat}
-                      onChange={(e) => setFormDwgFormat(e.target.value as any)}
-                      style={{ width: '100%', height: '34px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '12px' }}
-                    >
-                      <option value="DWG">AutoCAD .DWG</option>
-                      <option value="RVT">Revit .RVT</option>
-                      <option value="IFC">OpenBIM .IFC</option>
-                      <option value="PDF">Vector .PDF</option>
-                      <option value="DXF">CAD .DXF</option>
-                    </select>
+                    <input type="file" required accept=".pdf,.dwg,.dxf,.jpg,.jpeg,.png,.tif,.tiff,.ifc,.zip,.rvt" onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null
+                      setDrawingFile(file)
+                    }} style={{ width: '100%', minHeight: '34px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: '10px' }} />
+                    {drawingFile && <small style={{ display: 'block', marginTop: '3px', color: '#64748b' }}>{drawingFile.name} · {(drawingFile.size / 1024 / 1024).toFixed(1)} MB</small>}
                   </div>
 
                   <div>
@@ -2073,23 +1983,11 @@ CAD/BIM coordination layer parameters for Revoxen Construction CRM.
                       <option value="Issued for Construction">Issued for Construction (IFC)</option>
                       <option value="Approved">Approved</option>
                       <option value="Under Review">Under Review</option>
-                      <option value="Tender Archive">Tender Archive</option>
                     </select>
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                    Author / Structural Designer
-                  </label>
-                  <input
-                    type="text"
-                    value={formDwgAuthor}
-                    onChange={(e) => setFormDwgAuthor(e.target.value)}
-                    placeholder="e.g. Engr. Haroon Rasheed"
-                    style={{ width: '100%', height: '34px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '12px' }}
-                  />
-                </div>
+                {drawingError && <div className="ops-error">{drawingError}</div>}
               </div>
 
               <div className="lst-modal-actions">
@@ -2103,9 +2001,10 @@ CAD/BIM coordination layer parameters for Revoxen Construction CRM.
                 <button
                   type="submit"
                   className="lst-btn-primary"
+                  disabled={drawingSaving || !drawingFile}
                   style={{ background: '#4338ca', borderColor: '#4338ca' }}
                 >
-                  Upload &amp; Register Sheet
+                  {drawingSaving ? 'Uploading original…' : 'Upload &amp; Register Sheet'}
                 </button>
               </div>
             </form>
@@ -2155,7 +2054,7 @@ CAD/BIM coordination layer parameters for Revoxen Construction CRM.
               </div>
 
               <div style={{ background: '#f1f5f9', padding: '10px', borderRadius: '6px', fontSize: '11px', color: '#475569' }}>
-                ℹ️ This drawing record is tracked in the Revoxen central drawings register. Download below to obtain the coordination bundle.
+                This metadata is linked to the original project file. DWG, DXF and other unsupported formats download unchanged; no CAD preview is generated here.
               </div>
             </div>
 

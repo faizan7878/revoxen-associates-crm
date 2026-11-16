@@ -48,6 +48,16 @@ export function openDatabase(filename?: string): Db {
       id INTEGER PRIMARY KEY, budget_id INTEGER NOT NULL REFERENCES project_budgets(id) ON DELETE CASCADE,
       category TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', amount REAL NOT NULL CHECK(amount >= 0)
     );
+    CREATE TABLE IF NOT EXISTS project_drawings (
+      id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+      drawing_no TEXT NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+      revision TEXT NOT NULL, scale TEXT NOT NULL DEFAULT '', sheet_size TEXT NOT NULL DEFAULT '', original_name TEXT NOT NULL, storage_name TEXT NOT NULL UNIQUE,
+      mime_type TEXT NOT NULL, file_size INTEGER NOT NULL CHECK(file_size > 0),
+      status TEXT NOT NULL DEFAULT 'Under Review' CHECK(status IN ('Under Review','Approved','Issued for Construction','Superseded','Archived')),
+      uploaded_by TEXT NOT NULL DEFAULT '', uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      archived_at TEXT NOT NULL DEFAULT '', UNIQUE(project_id,drawing_no,revision)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_drawings_project ON project_drawings(project_id,drawing_no,uploaded_at);
     CREATE TABLE IF NOT EXISTS employees (
       id INTEGER PRIMARY KEY, employee_code TEXT NOT NULL UNIQUE, full_name TEXT NOT NULL,
       job_title TEXT NOT NULL DEFAULT '', department TEXT NOT NULL DEFAULT '',
@@ -146,6 +156,12 @@ export function openDatabase(filename?: string): Db {
       grand_total REAL NOT NULL DEFAULT 0, notes TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS document_drawings (
+      document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      drawing_id INTEGER NOT NULL REFERENCES project_drawings(id) ON DELETE RESTRICT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(document_id,drawing_id)
+    );
     CREATE TABLE IF NOT EXISTS document_lines (
       id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
       sort_order INTEGER NOT NULL DEFAULT 0, item TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
@@ -204,6 +220,20 @@ export function openDatabase(filename?: string): Db {
   ensureColumn(db, 'documents', 'lead_id', 'INTEGER REFERENCES leads(id) ON DELETE SET NULL')
   ensureColumn(db, 'projects', 'lead_source', "TEXT NOT NULL DEFAULT 'Website Enquiries'")
   ensureColumn(db, 'projects', 'lead_id', 'INTEGER REFERENCES leads(id) ON DELETE SET NULL')
+  ensureColumn(db, 'projects', 'category', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'description', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'scope_of_work', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'client_contact', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'client_phone', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'client_email', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'priority', "TEXT NOT NULL DEFAULT 'Medium'")
+  ensureColumn(db, 'projects', 'actual_completion_date', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'assigned_engineers', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'site_supervisor', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'project_specifications', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'projects', 'project_notes', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'project_drawings', 'scale', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'project_drawings', 'sheet_size', "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, 'expenses', 'paid_amount', 'REAL NOT NULL DEFAULT 0')
   ensureColumn(db, 'users', 'google_id', "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, 'users', 'phone', "TEXT NOT NULL DEFAULT ''")

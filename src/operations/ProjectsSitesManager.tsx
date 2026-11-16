@@ -4,6 +4,7 @@ import {
   Calculator, ShieldAlert, Award, ArrowRightLeft, Plus,
   Check, AlertTriangle, AlertCircle, RefreshCw, XCircle, X
 } from 'lucide-react'
+import ProjectProfile from './ProjectProfile'
 import './lead-tracking.css'
 
 // ============================================================================
@@ -21,11 +22,12 @@ export type ProjectSiteTab =
 
 export interface ProjectPortfolioItem {
   id: string
+  projectCode: string
   name: string
   client: string
   budget: number
   spent: number
-  status: 'Planning' | 'In Progress' | 'Delayed' | 'Completed'
+  status: string
 }
 
 export interface SiteAllocationItem {
@@ -81,14 +83,6 @@ export interface SnagItem {
 // Seed Data
 // ============================================================================
 
-const initialProjects: ProjectPortfolioItem[] = [
-  { id: 'PRJ-101', name: 'Gulberg Executive Tower (G+18)', client: 'Al-Ghurair Real Estate', budget: 85000000, spent: 52000000, status: 'In Progress' },
-  { id: 'PRJ-102', name: 'DHA Commercial Complex Ring Road', client: 'Frontier Developers', budget: 140000000, spent: 110000000, status: 'In Progress' },
-  { id: 'PRJ-103', name: 'Multan Industrial Logistics Warehouse', client: 'Fast Logistics Group', budget: 65000000, spent: 61000000, status: 'Delayed' },
-  { id: 'PRJ-104', name: 'Lake City Luxury Residential Villas', client: 'Lake City Holdings', budget: 45000000, spent: 44500000, status: 'Completed' },
-  { id: 'PRJ-105', name: 'Bahria Town Medical Complex Wing C', client: 'Bahria Health Foundation', budget: 120000000, spent: 48000000, status: 'Planning' },
-]
-
 const initialSiteAllocations: SiteAllocationItem[] = [
   { id: 'SA-1', projectId: 'PRJ-101', supervisor: 'Engr. Zafar Iqbal (PE)', currentMachinery: 'CAT 320D Excavator (x2), Tower Crane 50m', materialAllocated: 'Steel Grade 60: 45 Tons, Cement: 1,200 Bags' },
   { id: 'SA-2', projectId: 'PRJ-102', supervisor: 'Engr. Haroon Rasheed', currentMachinery: 'Concrete Transit Mixer 8m³ (x3), JCB Backhoe', materialAllocated: 'ReadyMix Class A: 320 m³, Crush: 150 Tons' },
@@ -134,14 +128,38 @@ const defaultDateISO = '2026-10-26'
 interface ProjectsSitesManagerProps {
   search?: string
   canEdit?: boolean
+  projects: Record<string, unknown>[]
+  expenses: Record<string, unknown>[]
+  subcontractOrders: Record<string, unknown>[]
+  canOpenProjectAccounts: boolean
+  onCreateProject: () => void
+  onEditProject: (id: number) => void
+  onOpenProjectAccount: (projectCode: string) => void
+  onNotify: (message: string) => void
 }
 
-export default function ProjectsSitesManager({ search = '', canEdit = true }: ProjectsSitesManagerProps) {
+export default function ProjectsSitesManager({ projects, expenses, subcontractOrders, search = '', canEdit = true, canOpenProjectAccounts, onCreateProject, onEditProject, onOpenProjectAccount, onNotify }: ProjectsSitesManagerProps) {
   // Navigation
   const [activeTab, setActiveTab] = useState<ProjectSiteTab>('portfolio')
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
 
   // 1. Projects Portfolio State & Module 1 Alerts
-  const [projectsArray] = useState<ProjectPortfolioItem[]>(initialProjects)
+  const projectsArray = useMemo<ProjectPortfolioItem[]>(() => projects.map((project) => {
+    const projectId = Number(project.id)
+    const directPayments = expenses.filter((expense) => Number(expense.project_id) === projectId && expense.status !== 'Void')
+      .reduce((sum, expense) => sum + Number(expense.paid_amount || 0), 0)
+    const subcontractPayments = subcontractOrders.filter((order) => Number(order.project_id) === projectId && order.status !== 'Cancelled')
+      .reduce((sum, order) => sum + Number(order.paid_amount || 0), 0)
+    return {
+      id: String(projectId),
+      projectCode: String(project.project_code || projectId),
+      name: String(project.name || ''),
+      client: String(project.client || ''),
+      budget: Number(project.contract_amount || 0),
+      spent: directPayments + subcontractPayments,
+      status: String(project.status || 'Planning'),
+    }
+  }), [projects, expenses, subcontractOrders])
   const [criticalAlerts, setCriticalAlerts] = useState<string[]>([])
 
   // 2. Site Allocation State
@@ -194,6 +212,7 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
     return projectsArray.filter(
       (p) =>
         p.id.toLowerCase().includes(q) ||
+        p.projectCode.toLowerCase().includes(q) ||
         p.name.toLowerCase().includes(q) ||
         p.client.toLowerCase().includes(q)
     )
@@ -327,6 +346,18 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
 
   // Currency helper
   const fmtPKR = (v: number) => `₨ ${new Intl.NumberFormat('en-PK').format(v)}`
+
+  const selectedProject = selectedProjectId === null ? null : projects.find((project) => Number(project.id) === selectedProjectId)
+  if (selectedProject) return <ProjectProfile
+    key={selectedProjectId}
+    projectId={selectedProjectId}
+    canEdit={canEdit}
+    canOpenAccounts={canOpenProjectAccounts}
+    onBack={() => setSelectedProjectId(null)}
+    onEdit={onEditProject}
+    onOpenAccount={onOpenProjectAccount}
+    onNotify={onNotify}
+  />
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -533,25 +564,27 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
               <div>
                 <h2 className="lst-card-title">
                   <BriefcaseBusiness size={18} color="#0f172a" />
-                  Active Construction Projects Portfolio ({filteredProjects.length})
+                  Project Portfolio ({filteredProjects.length})
                 </h2>
                 <span className="lst-card-sub">
-                  Filtered bound to global search input · Live budgetary tracking
+                  Database-backed project records · Settled expense and subcontract payments
                 </span>
               </div>
+              {canEdit && <button type="button" className="lst-primary-btn" onClick={onCreateProject}><Plus size={14} />New project</button>}
             </div>
 
             <div className="lst-table-wrapper">
               <table className="lst-table">
                 <thead>
                   <tr>
-                    <th>Project ID</th>
+                    <th>Project code · ID</th>
                     <th>Project Name</th>
                     <th>Client Authority</th>
                     <th>Total Budget</th>
                     <th>Actual Spent</th>
                     <th>Cost Variance</th>
                     <th>Current Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -560,7 +593,7 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                     return (
                       <tr key={p.id}>
                         <td>
-                          <span className="lst-tender-id">{p.id}</span>
+                          <span className="lst-tender-id">{p.projectCode}</span><small>#{p.id}</small>
                         </td>
                         <td>
                           <strong>{p.name}</strong>
@@ -589,12 +622,13 @@ export default function ProjectsSitesManager({ search = '', canEdit = true }: Pr
                             {p.status}
                           </span>
                         </td>
+                        <td><div className="lst-row-actions"><button type="button" onClick={() => setSelectedProjectId(Number(p.id))}>Open</button>{canEdit && <button type="button" onClick={() => onEditProject(Number(p.id))}>Edit</button>}</div></td>
                       </tr>
                     )
                   })}
                   {filteredProjects.length === 0 && (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
                         No projects matching search term "{search}".
                       </td>
                     </tr>

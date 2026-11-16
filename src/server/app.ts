@@ -1,8 +1,10 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
-import { existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
+import { extname, join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { OAuth2Client } from 'google-auth-library'
+import multer from 'multer'
 import type { Db } from './db.js'
 import { calculateDocument, calculatePayroll } from './db.js'
 import { allPermissions, createSession, getSessionUser, hashPassword, normalizePermissions, parseSqliteUtc, permissionModules, tokenHash, verifyPassword, type AuthUser, type PermissionModule, type Permissions } from './auth.js'
@@ -11,9 +13,38 @@ type Row = Record<string, unknown>
 const isoDay = /^\d{4}-\d{2}-\d{2}$/
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/
 
-export function createApp(db: Db, options: { authentication?: boolean } = {}) {
+export function createApp(db: Db, options: { authentication?: boolean; drawingStorageDir?: string } = {}) {
   const app = express()
   app.use(express.json({ limit: '1mb' }))
+  const drawingRoot = resolve(options.drawingStorageDir || process.env.PROJECT_DRAWINGS_DIR || 'data/project-drawings')
+  const maxDrawingBytes = Math.max(1, Number(process.env.PROJECT_DRAWING_MAX_MB || 100)) * 1024 * 1024
+  const drawingUpload = multer({
+    storage: multer.diskStorage({
+      destination: (request, _file, callback) => {
+        try {
+          const projectId = idParam(request)
+          ensureExists(db, 'projects', projectId, 'Project')
+          const directory = join(drawingRoot, String(projectId))
+          mkdirSync(directory, { recursive: true })
+          callback(null, directory)
+        } catch (error) { callback(error as Error, '') }
+      },
+      filename: (_request, file, callback) => callback(null, `${randomUUID()}${extname(file.originalname).toLowerCase()}`),
+    }),
+    limits: { fileSize: maxDrawingBytes, files: 1 },
+    fileFilter: (_request, file, callback) => {
+      const extension = extname(file.originalname).toLowerCase()
+      const acceptedMimes: Record<string, string[]> = {
+        '.pdf': ['application/pdf'], '.jpg': ['image/jpeg'], '.jpeg': ['image/jpeg'], '.png': ['image/png'],
+        '.tif': ['image/tiff'], '.tiff': ['image/tiff'], '.dwg': ['application/acad','application/x-autocad','image/vnd.dwg','application/octet-stream'],
+        '.dxf': ['application/dxf','image/vnd.dxf','application/octet-stream'], '.ifc': ['application/ifc','application/octet-stream'],
+        '.zip': ['application/zip','application/x-zip-compressed','application/octet-stream'], '.rvt': ['application/octet-stream'],
+      }
+      const allowed = acceptedMimes[extension]
+      if (!allowed || !allowed.includes(file.mimetype.toLowerCase())) return callback(new HttpError(400, 'Unsupported drawing file type or MIME type.'))
+      callback(null, true)
+    },
+  })
 
   app.get('/api/health', (_request, response) => response.json({
     status: 'ok',
@@ -218,6 +249,14 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     }
     if (/^\/project-budgets\/\d+\/audit$/.test(request.path) && user.role !== 'admin') return next(new HttpError(403, 'Only an administrator can audit a project budget.'))
     if (request.path === '/bootstrap') return next()
+    const drawingRoute = request.path.startsWith('/project-drawings') || /^\/projects\/\d+\/drawings$/.test(request.path)
+    if (drawingRoute) {
+      const canView = user.role === 'admin' || user.permissions.projects?.view || user.permissions.engineering?.view
+      const canEdit = user.role === 'admin' || user.permissions.projects?.edit || user.permissions.engineering?.edit
+      if (!canView) return next(new HttpError(403, 'Projects or Engineering access is required to view drawings.'))
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !canEdit) return next(new HttpError(403, 'Projects or Engineering edit access is required to change drawings.'))
+      return next()
+    }
     const modules = routeModules(request, db, user)
     for (const module of modules) {
       const permission = user.permissions[module]
@@ -340,6 +379,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const can = (module: keyof Permissions) => !user || user.role === 'admin' || Boolean(user.permissions[module]?.view)
     response.json({
       projects: can('projects') ? db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all() : [],
+      engineeringProjects: can('projects') || can('engineering') ? db.prepare('SELECT id,project_code,name FROM projects ORDER BY created_at DESC').all() : [],
       employees: can('employees') ? db.prepare('SELECT * FROM employees ORDER BY full_name').all() : [],
       employeeLoans: can('loans') ? db.prepare(`SELECT l.*,e.employee_code,e.full_name FROM employee_loans l JOIN employees e ON e.id=l.employee_id ORDER BY l.issue_date DESC,l.id DESC`).all() : [],
       payroll: can('payroll') ? db.prepare(`SELECT p.*, e.employee_code, e.full_name, e.job_title FROM payroll p JOIN employees e ON e.id = p.employee_id ORDER BY p.pay_period DESC, e.full_name`).all() : [],
@@ -567,9 +607,14 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       work_type: optionalText(body, 'work_type'), site_address: optionalText(body, 'site_address'),
       start_date: optionalDate(body, 'start_date'), due_date: optionalDate(body, 'due_date'),
       contract_amount: money(body, 'contract_amount'), manager: optionalText(body, 'manager'), status: optionalText(body, 'status', 'Planning'),
+      category: optionalText(body, 'category'), description: optionalText(body, 'description'), scope_of_work: optionalText(body, 'scope_of_work'),
+      client_contact: optionalText(body, 'client_contact'), client_phone: optionalText(body, 'client_phone'), client_email: optionalText(body, 'client_email'),
+      priority: optionalText(body, 'priority', 'Medium'), actual_completion_date: optionalDate(body, 'actual_completion_date'),
+      assigned_engineers: optionalText(body, 'assigned_engineers'), site_supervisor: optionalText(body, 'site_supervisor'),
+      project_specifications: optionalText(body, 'project_specifications'), project_notes: optionalText(body, 'project_notes'),
     }
-    const result = db.prepare(`INSERT INTO projects (project_code,name,client,work_type,site_address,start_date,due_date,contract_amount,manager,status)
-      VALUES (@project_code,@name,@client,@work_type,@site_address,@start_date,@due_date,@contract_amount,@manager,@status)`).run(values)
+    const result = db.prepare(`INSERT INTO projects (project_code,name,client,work_type,site_address,start_date,due_date,contract_amount,manager,status,category,description,scope_of_work,client_contact,client_phone,client_email,priority,actual_completion_date,assigned_engineers,site_supervisor,project_specifications,project_notes)
+      VALUES (@project_code,@name,@client,@work_type,@site_address,@start_date,@due_date,@contract_amount,@manager,@status,@category,@description,@scope_of_work,@client_contact,@client_phone,@client_email,@priority,@actual_completion_date,@assigned_engineers,@site_supervisor,@project_specifications,@project_notes)`).run(values)
     const user = currentUser(request, db)
     if (user) logActivity(db, user.id, 'Created Project', 'Projects', `Created project ${values.project_code}: ${values.name} (${Number(values.contract_amount).toLocaleString()} PKR)`, request)
     response.status(201).json(db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid))
@@ -591,9 +636,21 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
       contract_amount: body.contract_amount !== undefined ? money(body, 'contract_amount') : target.contract_amount,
       manager: body.manager !== undefined ? optionalText(body, 'manager') : target.manager,
       status: body.status !== undefined ? optionalText(body, 'status') : target.status,
+      category: body.category !== undefined ? optionalText(body, 'category') : target.category,
+      description: body.description !== undefined ? optionalText(body, 'description') : target.description,
+      scope_of_work: body.scope_of_work !== undefined ? optionalText(body, 'scope_of_work') : target.scope_of_work,
+      client_contact: body.client_contact !== undefined ? optionalText(body, 'client_contact') : target.client_contact,
+      client_phone: body.client_phone !== undefined ? optionalText(body, 'client_phone') : target.client_phone,
+      client_email: body.client_email !== undefined ? optionalText(body, 'client_email') : target.client_email,
+      priority: body.priority !== undefined ? optionalText(body, 'priority') : target.priority,
+      actual_completion_date: body.actual_completion_date !== undefined ? optionalDate(body, 'actual_completion_date') : target.actual_completion_date,
+      assigned_engineers: body.assigned_engineers !== undefined ? optionalText(body, 'assigned_engineers') : target.assigned_engineers,
+      site_supervisor: body.site_supervisor !== undefined ? optionalText(body, 'site_supervisor') : target.site_supervisor,
+      project_specifications: body.project_specifications !== undefined ? optionalText(body, 'project_specifications') : target.project_specifications,
+      project_notes: body.project_notes !== undefined ? optionalText(body, 'project_notes') : target.project_notes,
       id,
     }
-    db.prepare(`UPDATE projects SET project_code=@project_code, name=@name, client=@client, work_type=@work_type, site_address=@site_address, start_date=@start_date, due_date=@due_date, contract_amount=@contract_amount, manager=@manager, status=@status WHERE id=@id`).run(values)
+    db.prepare(`UPDATE projects SET project_code=@project_code,name=@name,client=@client,work_type=@work_type,site_address=@site_address,start_date=@start_date,due_date=@due_date,contract_amount=@contract_amount,manager=@manager,status=@status,category=@category,description=@description,scope_of_work=@scope_of_work,client_contact=@client_contact,client_phone=@client_phone,client_email=@client_email,priority=@priority,actual_completion_date=@actual_completion_date,assigned_engineers=@assigned_engineers,site_supervisor=@site_supervisor,project_specifications=@project_specifications,project_notes=@project_notes WHERE id=@id`).run(values)
     const user = currentUser(request, db)
     if (user) logActivity(db, user.id, 'Updated Project', 'Projects', `Updated project ${values.project_code}: ${values.name}`, request)
     response.json(db.prepare('SELECT * FROM projects WHERE id = ?').get(id))
@@ -613,6 +670,92 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     })()
     const user = currentUser(request, db)
     if (user) logActivity(db, user.id, 'Deleted Project', 'Projects', `Deleted project ${target.project_code || `#${id}`}`, request)
+    response.status(204).end()
+  })
+
+  app.get('/api/projects/:id/profile', (request, response) => {
+    const projectId = idParam(request)
+    const project = db.prepare('SELECT * FROM projects WHERE id=?').get(projectId) as Row | undefined
+    if (!project) throw new HttpError(404, 'Project not found.')
+    const drawings = db.prepare(`SELECT id,project_id,drawing_no,title,category,description,revision,scale,sheet_size,mime_type,file_size,status,uploaded_by,uploaded_at,original_name
+      FROM project_drawings WHERE project_id=? ORDER BY drawing_no,uploaded_at DESC,id DESC`).all(projectId)
+    const siteReports = db.prepare('SELECT * FROM daily_site_reports WHERE project_id=? ORDER BY report_date DESC,id DESC LIMIT 20').all(projectId)
+    const documents = db.prepare(`SELECT d.*,COALESCE(SUM(pay.amount),0) AS amount_paid FROM documents d LEFT JOIN payments pay ON pay.document_id=d.id
+      WHERE d.project_id=? GROUP BY d.id ORDER BY d.issue_date DESC,d.id DESC`).all(projectId)
+    const activity = db.prepare(`SELECT id,user_name,action,description,created_at FROM user_activity_logs
+      WHERE module='Projects' AND description LIKE ? ORDER BY created_at DESC,id DESC LIMIT 20`).all(`%${String(project.project_code)}%`)
+    response.json({ project, drawings, siteReports, documents, activity })
+  })
+
+  app.get('/api/projects/:id/drawings', (request, response) => {
+    const projectId = idParam(request)
+    ensureExists(db, 'projects', projectId, 'Project')
+    const drawings = db.prepare(`SELECT id,project_id,drawing_no,title,category,description,revision,scale,sheet_size,mime_type,file_size,status,uploaded_by,uploaded_at,original_name
+      FROM project_drawings WHERE project_id=? AND status<>'Archived' ORDER BY drawing_no,uploaded_at DESC,id DESC`).all(projectId)
+    response.json(drawings)
+  })
+  app.post('/api/projects/:id/drawings', (request, response, next) => {
+    const projectId = idParam(request)
+    ensureExists(db, 'projects', projectId, 'Project')
+    drawingUpload.single('file')(request, response, (error) => error ? next(error) : next())
+  }, (request, response) => {
+    const file = request.file
+    if (!file) throw new HttpError(400, 'Choose a drawing file to upload.')
+    try {
+      const body = request.body as Row
+      const category = requiredText(body, 'category')
+      const categories = ['Architectural','Structural','Foundation','Civil','Electrical','Plumbing','HVAC','Mechanical','Floor Plan','Elevation','Section','Site Plan','Roof Plan','Shop Drawing','As-Built','Reinforcement','Detail','Other']
+      if (!categories.includes(category)) throw new HttpError(400, 'Choose a valid drawing category.')
+      const user = response.locals.user as AuthUser | undefined
+      const values = {
+        project_id: idParam(request), drawing_no: requiredText(body, 'drawing_no'), title: requiredText(body, 'title'),
+        category, description: optionalText(body, 'description'), revision: requiredText(body, 'revision'),
+        scale: optionalText(body, 'scale'), sheet_size: optionalText(body, 'sheet_size'),
+        original_name: Array.from(file.originalname.split(/[\\/]/).pop() || 'drawing', (character) => character.charCodeAt(0) < 32 ? '_' : character).join('').slice(0, 255),
+        storage_name: file.filename, mime_type: file.mimetype, file_size: file.size,
+        status: 'Under Review', uploaded_by: user?.name ?? 'Unknown',
+      }
+      const result = db.transaction(() => {
+        db.prepare("UPDATE project_drawings SET status='Superseded' WHERE project_id=? AND drawing_no=? AND status<>'Archived'").run(values.project_id, values.drawing_no)
+        return db.prepare(`INSERT INTO project_drawings (project_id,drawing_no,title,category,description,revision,scale,sheet_size,original_name,storage_name,mime_type,file_size,status,uploaded_by)
+          VALUES (@project_id,@drawing_no,@title,@category,@description,@revision,@scale,@sheet_size,@original_name,@storage_name,@mime_type,@file_size,@status,@uploaded_by)`).run(values)
+      })()
+      const drawing = db.prepare(`SELECT id,project_id,drawing_no,title,category,description,revision,scale,sheet_size,mime_type,file_size,status,uploaded_by,uploaded_at,original_name
+        FROM project_drawings WHERE id=?`).get(result.lastInsertRowid)
+      if (user) logActivity(db, user.id, 'Uploaded Drawing', 'Projects', `Uploaded ${values.drawing_no} revision ${values.revision} to project #${values.project_id}`, request)
+      response.status(201).json(drawing)
+    } catch (error) {
+      unlinkSync(file.path)
+      throw error
+    }
+  })
+  app.get('/api/project-drawings/:id/file', (request, response) => {
+    const drawing = db.prepare('SELECT * FROM project_drawings WHERE id=?').get(idParam(request)) as Row | undefined
+    if (!drawing) throw new HttpError(404, 'Drawing not found.')
+    const projectDirectory = resolve(drawingRoot, String(drawing.project_id))
+    const filePath = resolve(projectDirectory, String(drawing.storage_name))
+    if (!filePath.startsWith(`${projectDirectory}/`) || !existsSync(filePath)) throw new HttpError(404, 'The original drawing file is unavailable.')
+    const previewable = ['application/pdf','image/jpeg','image/png','image/tiff'].includes(String(drawing.mime_type))
+    const inline = request.query.preview === '1' && previewable
+    response.setHeader('X-Content-Type-Options', 'nosniff')
+    response.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+    response.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(String(drawing.original_name))}`)
+    response.type(String(drawing.mime_type)).sendFile(filePath)
+  })
+  app.patch('/api/project-drawings/:id/status', (request, response) => {
+    const id = idParam(request)
+    const status = requiredText(objectBody(request), 'status')
+    if (!['Under Review','Approved','Issued for Construction','Superseded'].includes(status)) throw new HttpError(400, 'Choose a valid drawing status.')
+    const result = db.prepare('UPDATE project_drawings SET status=? WHERE id=? AND status<>\'Archived\'').run(status, id)
+    if (!result.changes) throw new HttpError(404, 'Active drawing not found.')
+    response.json(db.prepare(`SELECT id,project_id,drawing_no,title,category,description,revision,scale,sheet_size,mime_type,file_size,status,uploaded_by,uploaded_at,original_name FROM project_drawings WHERE id=?`).get(id))
+  })
+  app.delete('/api/project-drawings/:id', (request, response) => {
+    const id = idParam(request)
+    const result = db.prepare("UPDATE project_drawings SET status='Archived',archived_at=CURRENT_TIMESTAMP WHERE id=? AND status<>'Archived'").run(id)
+    if (!result.changes) throw new HttpError(404, 'Active drawing not found.')
+    const user = response.locals.user as AuthUser | undefined
+    if (user) logActivity(db, user.id, 'Archived Drawing', 'Projects', `Archived drawing #${id}`, request)
     response.status(204).end()
   })
 
@@ -1242,7 +1385,13 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const id = idParam(request)
     const document = db.prepare('SELECT * FROM documents WHERE id=?').get(id)
     if (!document) throw new HttpError(404, 'Document not found.')
-    response.json({ ...document as Row, lines: db.prepare('SELECT * FROM document_lines WHERE document_id=? ORDER BY sort_order,id').all(id), payments: db.prepare('SELECT * FROM payments WHERE document_id=? ORDER BY payment_date,id').all(id) })
+    response.json({
+      ...document as Row,
+      lines: db.prepare('SELECT * FROM document_lines WHERE document_id=? ORDER BY sort_order,id').all(id),
+      payments: db.prepare('SELECT * FROM payments WHERE document_id=? ORDER BY payment_date,id').all(id),
+      drawings: db.prepare(`SELECT d.id,d.project_id,d.drawing_no,d.title,d.category,d.revision,d.status,d.original_name
+        FROM document_drawings l JOIN project_drawings d ON d.id=l.drawing_id WHERE l.document_id=? ORDER BY d.drawing_no,d.revision`).all(id),
+    })
   })
   app.post('/api/documents', (request, response) => {
     const body = objectBody(request)
@@ -1251,6 +1400,13 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     if (!Array.isArray(body.lines) || !body.lines.length) throw new HttpError(400, 'Add at least one priced line item.')
     const projectId = optionalInteger(body.project_id)
     if (projectId) ensureExists(db, 'projects', projectId, 'Project')
+    if (body.drawing_ids !== undefined && !Array.isArray(body.drawing_ids)) throw new HttpError(400, 'drawing_ids must be an array of drawing revision IDs.')
+    const drawingIds = (Array.isArray(body.drawing_ids) ? body.drawing_ids : []).map((value) => positiveInteger(value, 'drawing_ids'))
+    if (drawingIds.length && (documentType !== 'Estimate' || !projectId)) throw new HttpError(400, 'Drawing revisions can only be linked to an estimate with a selected project.')
+    for (const drawingId of drawingIds) {
+      const drawing = db.prepare("SELECT 1 FROM project_drawings WHERE id=? AND project_id=? AND status<>'Archived'").get(drawingId, projectId)
+      if (!drawing) throw new HttpError(400, 'Each selected drawing revision must belong to the estimate project.')
+    }
     const lines = body.lines.map((line, index) => {
       if (!line || typeof line !== 'object' || Array.isArray(line)) throw new HttpError(400, 'Each line item must be an object.')
       return { ...(line as Row), sortOrder: index }
@@ -1283,12 +1439,17 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
         taxRate: line.taxRate, measuredQuantity: line.measuredQuantity, lineSubtotal: line.lineSubtotal,
         lineTax: line.lineTax, lineTotal: line.lineTotal,
       }))
+      const linkDrawing = db.prepare('INSERT INTO document_drawings (document_id,drawing_id) VALUES (?,?)')
+      drawingIds.forEach((drawingId) => linkDrawing.run(result.lastInsertRowid, drawingId))
       return Number(result.lastInsertRowid)
     })()
     const actUser = currentUser(request, db)
     const docMod = documentType === 'Estimate' ? 'Estimates' : 'Invoices'
     if (actUser) logActivity(db, actUser.id, `Created ${documentType}`, docMod, `Created ${documentType.toLowerCase()} ${values.document_number} for ${values.client_name} (${values.grand_total.toLocaleString()} PKR)`, request)
-    response.status(201).json(db.prepare('SELECT * FROM documents WHERE id=?').get(createDocument))
+    response.status(201).json({
+      ...db.prepare('SELECT * FROM documents WHERE id=?').get(createDocument) as Row,
+      drawing_ids: drawingIds,
+    })
   })
   app.patch('/api/documents/:id/audit', (request, response) => {
     const id = idParam(request)
@@ -1365,6 +1526,19 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
     const body = objectBody(request)
     const target = db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as Row | undefined
     if (!target) throw new HttpError(404, 'Document not found.')
+    const projectId = body.project_id !== undefined ? optionalInteger(body.project_id) ?? null : target.project_id === null ? null : Number(target.project_id)
+    if (projectId) ensureExists(db, 'projects', projectId, 'Project')
+    if (body.drawing_ids !== undefined && !Array.isArray(body.drawing_ids)) throw new HttpError(400, 'drawing_ids must be an array of drawing revision IDs.')
+    const drawingIds = (Array.isArray(body.drawing_ids) ? body.drawing_ids : []).map((value) => positiveInteger(value, 'drawing_ids'))
+    if (drawingIds.length && (target.document_type !== 'Estimate' || !projectId)) throw new HttpError(400, 'Drawing revisions can only be linked to an estimate with a selected project.')
+    for (const drawingId of drawingIds) {
+      if (!db.prepare("SELECT 1 FROM project_drawings WHERE id=? AND project_id=? AND status<>'Archived'").get(drawingId, projectId)) {
+        throw new HttpError(400, 'Each selected drawing revision must belong to the estimate project.')
+      }
+    }
+    if (target.project_id !== projectId && body.drawing_ids === undefined && db.prepare('SELECT 1 FROM document_drawings WHERE document_id=?').get(id)) {
+      throw new HttpError(400, 'Select drawing revisions again when changing the estimate project.')
+    }
     const rawLines = Array.isArray(body.lines) && body.lines.length > 0 ? (body.lines as unknown[]) : null
     let subtotal = Number(target.subtotal ?? 0)
     let discountAmount = body.discount_amount !== undefined ? money(body, 'discount_amount') : Number(target.discount_amount ?? 0)
@@ -1389,7 +1563,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
 
     const values = {
       document_number: body.document_number !== undefined ? requiredText(body, 'document_number') : target.document_number,
-      project_id: body.project_id !== undefined ? (body.project_id ? Number(body.project_id) : null) : target.project_id,
+      project_id: projectId,
       client_name: body.client_name !== undefined ? requiredText(body, 'client_name') : target.client_name,
       subject: body.subject !== undefined ? requiredText(body, 'subject') : target.subject,
       issue_date: body.issue_date !== undefined ? requiredDate(body, 'issue_date') : target.issue_date,
@@ -1423,10 +1597,19 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
           lineTax: line.lineTax, lineTotal: line.lineTotal,
         }))
       }
+      if (Array.isArray(body.drawing_ids)) {
+        db.prepare('DELETE FROM document_drawings WHERE document_id=?').run(id)
+        const linkDrawing = db.prepare('INSERT INTO document_drawings (document_id,drawing_id) VALUES (?,?)')
+        drawingIds.forEach((drawingId) => linkDrawing.run(id, drawingId))
+      }
     })()
     const user = currentUser(request, db)
     if (user) logActivity(db, user.id, `Updated ${target.document_type}`, 'Documents', `Updated ${target.document_type} ${values.document_number}`, request)
-    response.json(db.prepare('SELECT * FROM documents WHERE id = ?').get(id))
+    response.json({
+      ...db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as Row,
+      drawings: db.prepare(`SELECT d.id,d.project_id,d.drawing_no,d.title,d.category,d.revision,d.status,d.original_name
+        FROM document_drawings l JOIN project_drawings d ON d.id=l.drawing_id WHERE l.document_id=? ORDER BY d.drawing_no,d.revision`).all(id),
+    })
   }
   app.put('/api/documents/:id', handleUpdateDocument)
   app.patch('/api/documents/:id', handleUpdateDocument)
@@ -1485,6 +1668,7 @@ export function createApp(db: Db, options: { authentication?: boolean } = {}) {
 
   app.use((_request, _response, next) => next(new HttpError(404, 'API route not found.')))
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+    if (error instanceof multer.MulterError) return response.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Drawing exceeds the configured upload size limit.' : 'Drawing upload could not be processed.' })
     if (error instanceof HttpError) return response.status(error.status).json({ error: error.message })
     if (error instanceof SyntaxError) return response.status(400).json({ error: 'Request body must contain valid JSON.' })
     if (error instanceof Error && /UNIQUE constraint failed/.test(error.message)) return response.status(409).json({ error: 'That record number already exists.' })
@@ -1592,6 +1776,7 @@ function routeModules(request: Request, db: Db, user: AuthUser): PermissionModul
     if (path.includes('/convert-to-project')) return ['leads', 'projects']
     return ['leads']
   }
+  if (path.startsWith('/project-drawings')) return ['projects']
   if (path.startsWith('/project-accounts') || path.startsWith('/project-budgets') || /^\/projects\/\d+\/budgets$/.test(path)) return ['projectAccounts']
   if (path.startsWith('/projects')) return ['projects']
   if (path.startsWith('/site-reports')) return ['siteReports']

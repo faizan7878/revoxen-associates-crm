@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Banknote, CalendarDays, Check, ChevronRight, CircleDollarSign, FileCheck2, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react'
 
 type Row = Record<string, unknown>
@@ -43,8 +43,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return result
 }
 
-export default function ProjectAccount({ canEdit, canEditExpenses, canAudit, onNotify }: { canEdit: boolean; canEditExpenses: boolean; canAudit: boolean; onNotify: (message: string) => void }) {
-  const [reference, setReference] = useState('')
+export default function ProjectAccount({ initialReference = '', canEdit, canEditExpenses, canAudit, onNotify }: { initialReference?: string; canEdit: boolean; canEditExpenses: boolean; canAudit: boolean; onNotify: (message: string) => void }) {
+  const [reference, setReference] = useState(initialReference)
   const [account, setAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -73,6 +73,18 @@ export default function ProjectAccount({ canEdit, canEditExpenses, canAudit, onN
       setError(problem instanceof Error ? problem.message : 'Could not open the project account.')
     } finally { setLoading(false) }
   }
+
+  useEffect(() => {
+    if (!initialReference) return
+    const timer = window.setTimeout(() => {
+      setLoading(true)
+      void api<Account>(`/project-accounts/${encodeURIComponent(initialReference)}`)
+        .then((result) => { setAccount(result); setReference(String(result.project.project_code)); setError('') })
+        .catch((problem) => setError(problem instanceof Error ? problem.message : 'Could not open the project account.'))
+        .finally(() => setLoading(false))
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [initialReference])
 
   const reload = () => openAccount(undefined, String(account?.project.id ?? reference))
   const addBudgetLine = () => setBudgetLines((lines) => [...lines, blankBudgetLine()])

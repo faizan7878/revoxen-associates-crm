@@ -1,10 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, Bell,
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Banknote, Bell,
   BriefcaseBusiness, CalendarDays, Check, CheckCircle2, CheckSquare, ChevronDown,
   CircleDollarSign, ClipboardList, Copy, Download, FileDown, FileSpreadsheet,
   FileText, Filter, HardHat, LayoutDashboard, LogOut, Menu, Package, Pencil, Plus, Printer, Receipt,
-  Search, Share2, ShieldCheck, Trash2, UserCog, UsersRound, Wallet, Wrench, X, Briefcase, Sparkles, Compass, PieChart as PieIcon, type LucideIcon,
+  Search, Share2, ShieldCheck, Trash2, UserCog, UsersRound, Wallet, Wrench, X, Briefcase, Sparkles, Compass, FileCode2, UploadCloud, type LucideIcon,
 } from 'lucide-react'
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
@@ -19,7 +19,7 @@ type ModuleId = 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'engine
 type EntryModule = Exclude<ModuleId, 'dashboard' | 'projectAccounts' | 'engineering' | 'payroll' | 'loans' | 'profitLoss' | 'users'>
 type AuthUser = { id: number; name: string; email: string; role: 'admin' | 'user'; permissions: Partial<Record<Exclude<ModuleId, 'users'>, { view: boolean; edit: boolean }>> }
 type Entry = Record<string, unknown>
-type Bootstrap = { projects: Entry[]; leads: Entry[]; employees: Entry[]; employeeLoans: Entry[]; payroll: Entry[]; assets: Entry[]; assetMaintenance: Entry[]; vendors: Entry[]; workOrders: Entry[]; expenses: Entry[]; documents: Entry[] }
+type Bootstrap = { projects: Entry[]; engineeringProjects: Entry[]; leads: Entry[]; employees: Entry[]; employeeLoans: Entry[]; payroll: Entry[]; assets: Entry[]; assetMaintenance: Entry[]; vendors: Entry[]; workOrders: Entry[]; expenses: Entry[]; documents: Entry[] }
 type Finance = { period: { from: string; to: string }; currency: string; revenue: number; cashCollected: number; receivables: number; projectExpenses: number; generalExpenses: number; cashExpensePayments: number; payrollCost: number; payrollPaid: number; vendorPayments: number; depreciation: number; inputTax: number; outputTax: number; totalOperatingExpenses: number; profitOrLoss: number; cashNet: number; billedInPeriod: Entry[]; expenseByCategory: Entry[]; projectProfitability: Entry[] }
 type Field = { key: string; label: string; required?: boolean; kind?: 'text' | 'date' | 'month' | 'number' | 'email' | 'tel' | 'textarea' | 'select'; options?: { value: string; label: string }[]; min?: number; max?: number; step?: number; hint?: string }
 type LineItem = { item: string; description: string; length: string; width: string; height: string; quantity: string; nos: string; unit: string; rate: string; taxRate: string }
@@ -52,7 +52,7 @@ const labels: Record<ModuleId, { title: string; subtitle: string; add?: string }
   users: { title: 'User access', subtitle: 'Create team accounts and control which CRM sections each person can view or edit.' },
 }
 
-const blankData: Bootstrap = { projects: [], leads: [], employees: [], employeeLoans: [], payroll: [], assets: [], assetMaintenance: [], vendors: [], workOrders: [], expenses: [], documents: [] }
+const blankData: Bootstrap = { projects: [], engineeringProjects: [], leads: [], employees: [], employeeLoans: [], payroll: [], assets: [], assetMaintenance: [], vendors: [], workOrders: [], expenses: [], documents: [] }
 const currentDate = new Date()
 const currentYearNumber = new Date().getFullYear()
 const todayISO = () => {
@@ -111,10 +111,18 @@ function entryFields(module: EntryModule, data: Bootstrap): Field[] {
     ]
     case 'projects': return [
       { key: 'project_code', label: 'Project code', required: true }, { key: 'name', label: 'Project name', required: true },
-      { key: 'client', label: 'Client / customer', required: true }, { key: 'work_type', label: 'Work type', kind: 'select', options: ['New construction', 'Renovation', 'Interior fit-out', 'Kitchen', 'Bathroom', 'Electrical', 'Civil', 'Other'].map((value) => ({ value, label: value })) },
-      { key: 'site_address', label: 'Site address', kind: 'textarea' }, { key: 'contract_amount', label: 'Contract value (PKR)', kind: 'number', min: 0, step: .01, required: true },
-      { key: 'start_date', label: 'Start date', kind: 'date' }, { key: 'due_date', label: 'Target completion', kind: 'date' },
-      { key: 'manager', label: 'Project manager' }, { key: 'status', label: 'Status', kind: 'select', options: ['Planning', 'In progress', 'At risk', 'Completed', 'On hold'].map((value) => ({ value, label: value })) },
+      { key: 'category', label: 'Project category', kind: 'select', options: ['Residential', 'Commercial', 'Industrial', 'Infrastructure', 'Renovation', 'Other'].map((value) => ({ value, label: value })) },
+      { key: 'work_type', label: 'Project type / work type', kind: 'select', options: ['New construction', 'Renovation', 'Interior fit-out', 'Kitchen', 'Bathroom', 'Electrical', 'Civil', 'Other'].map((value) => ({ value, label: value })) },
+      { key: 'client', label: 'Client / customer', required: true }, { key: 'client_contact', label: 'Client contact person' },
+      { key: 'client_phone', label: 'Client phone', kind: 'tel' }, { key: 'client_email', label: 'Client email', kind: 'email' },
+      { key: 'site_address', label: 'Site address', kind: 'textarea' }, { key: 'description', label: 'Project description', kind: 'textarea' },
+      { key: 'scope_of_work', label: 'Scope of work', kind: 'textarea' }, { key: 'contract_amount', label: 'Contract value (PKR)', kind: 'number', min: 0, step: .01, required: true },
+      { key: 'manager', label: 'Project manager' }, { key: 'assigned_engineers', label: 'Assigned engineers' },
+      { key: 'site_supervisor', label: 'Site supervisor' }, { key: 'priority', label: 'Priority', kind: 'select', options: ['Low', 'Medium', 'High', 'Critical'].map((value) => ({ value, label: value })) },
+      { key: 'start_date', label: 'Start date', kind: 'date' }, { key: 'due_date', label: 'Expected completion', kind: 'date' },
+      { key: 'actual_completion_date', label: 'Actual completion', kind: 'date' },
+      { key: 'status', label: 'Status', kind: 'select', options: ['Planning', 'Upcoming', 'In progress', 'At risk', 'Delayed', 'On hold', 'Completed', 'Cancelled'].map((value) => ({ value, label: value })) },
+      { key: 'project_specifications', label: 'Project specifications', kind: 'textarea' }, { key: 'project_notes', label: 'Project notes', kind: 'textarea' },
     ]
     case 'employees': return [
       { key: 'employee_code', label: 'Employee ID', required: true }, { key: 'full_name', label: 'Full legal name', required: true },
@@ -213,6 +221,7 @@ function OperationsApp() {
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
+  const [projectAccountReference, setProjectAccountReference] = useState('')
 
   useEffect(() => {
     let active = true
@@ -365,12 +374,12 @@ function OperationsApp() {
         {loading && <div className="ops-loading"><span className="ops-spinner" />Loading company records…</div>}
         {!loading && module === 'dashboard' && <Dashboard data={companyData} finance={finance} onNavigate={changeModule} period={period} setPeriod={setPeriod} canView={canView} canEdit={canEdit} />}
         {!loading && module === 'leads' && <LeadSourceTracking onNavigate={changeModule} leadsData={companyData.leads} canEdit={canEdit('leads')} />}
-        {!loading && module === 'projects' && <ProjectsSitesManager search={search} canEdit={canEdit('projects')} />}
-        {!loading && module === 'engineering' && <EngineeringDesk projects={companyData.projects} canEdit={canEdit('engineering')} />}
+        {!loading && module === 'projects' && <ProjectsSitesManager search={search} canEdit={canEdit('projects')} projects={companyData.projects} expenses={companyData.expenses} subcontractOrders={companyData.workOrders} canOpenProjectAccounts={canView('projectAccounts')} onCreateProject={() => openDialog('projects')} onEditProject={(id) => openDialog('projects', id)} onOpenProjectAccount={(projectCode) => { setProjectAccountReference(projectCode); changeModule('projectAccounts') }} onNotify={notify} />}
+        {!loading && module === 'engineering' && <EngineeringDesk projects={canView('projects') ? companyData.projects : companyData.engineeringProjects} canEdit={canEdit('engineering')} />}
         {!loading && module === 'profitLoss' && <ProfitLoss finance={finance} period={period} setPeriod={setPeriod} year={year} setYear={setYear} periodMode={periodMode} setPeriodMode={setPeriodMode} />}
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
-        {!loading && module === 'projectAccounts' && <ProjectAccount canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
+        {!loading && module === 'projectAccounts' && <ProjectAccount initialReference={projectAccountReference} canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
         {!loading && !['dashboard', 'leads', 'projects', 'projectAccounts', 'engineering', 'profitLoss', 'users'].includes(module) && <ModuleTable
           module={module}
           data={companyData}
@@ -977,6 +986,7 @@ function DataTable({ rows, columns }: { rows: Entry[]; columns: [string, string]
 
 function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: EntryModule | 'payroll' | 'employeeLoan' | 'assetMaintenance' | 'invoiceAudit' | 'invoicePayment' | 'workOrderPayment' | 'expensePayment'; selectedId: number | null; data: Bootstrap; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
   const documentModule = target === 'estimates' || target === 'invoices'
+  const isProject = target === 'projects'
   const isPayment = target === 'invoicePayment' || target === 'workOrderPayment' || target === 'expensePayment'
   const isInvoiceAudit = target === 'invoiceAudit'
   const isEdit = Boolean(selectedId && !isPayment && !isInvoiceAudit && target !== 'assetMaintenance')
@@ -1022,6 +1032,13 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
   })
 
   const [lines, setLines] = useState<LineItem[]>([blankLine()])
+  const [estimateDrawings, setEstimateDrawings] = useState<Entry[]>([])
+  const [selectedDrawingIds, setSelectedDrawingIds] = useState<number[]>([])
+  const [drawingLoadError, setDrawingLoadError] = useState('')
+  const [projectFiles, setProjectFiles] = useState<File[]>([])
+  const [projectFileCategory, setProjectFileCategory] = useState('Architectural')
+  const [projectFileRevision, setProjectFileRevision] = useState('A')
+  const [projectUploadProgress, setProjectUploadProgress] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -1047,6 +1064,31 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
     }).catch(() => {})
     return () => { active = false }
   }, [documentModule, isEdit, selectedId])
+
+  useEffect(() => {
+    if (target !== 'estimates') return
+    let active = true
+    const timer = window.setTimeout(() => {
+      if (!values.project_id) {
+        setEstimateDrawings([])
+        setSelectedDrawingIds([])
+        setDrawingLoadError('')
+        return
+      }
+      setDrawingLoadError('')
+      api<Entry[]>(`/projects/${values.project_id}/drawings`).then((drawings) => {
+        if (active) setEstimateDrawings(drawings)
+      }).catch((problem) => {
+        if (active) { setEstimateDrawings([]); setDrawingLoadError(message(problem)) }
+      })
+      if (isEdit && selectedId) {
+        api<{ drawings?: Entry[] }>(`/documents/${selectedId}`).then((document) => {
+          if (active) setSelectedDrawingIds((document.drawings ?? []).map((drawing) => Number(drawing.id)))
+        }).catch(() => {})
+      } else setSelectedDrawingIds([])
+    }, 0)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [target, values.project_id, isEdit, selectedId])
 
   const fields: Field[] = target === 'payroll' ? [
     { key: 'employee_id', label: 'Employee', kind: 'select', required: true, options: data.employees.filter((employee) => employee.status === 'Active').map((employee) => ({ value: String(employee.id), label: `${text(employee.employee_code)} · ${text(employee.full_name)}` })) },
@@ -1079,6 +1121,56 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
   const previewTotal = Math.max(0, documentSubtotal - discount) + Math.max(0, documentTax - documentTax * (documentSubtotal ? discount / documentSubtotal : 0))
 
   const setField = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }))
+  const addProjectFiles = (selected: FileList | File[]) => {
+    const accepted = new Set(['pdf','dwg','dxf','jpg','jpeg','png','tif','tiff','ifc','zip','rvt'])
+    const incoming = Array.from(selected)
+    const invalid = incoming.find((file) => !accepted.has(file.name.split('.').pop()?.toLowerCase() || '') || file.size > 100 * 1024 * 1024)
+    if (invalid) { setError(`${invalid.name}: unsupported format or larger than 100 MB.`); return }
+    setError('')
+    setProjectFiles((current) => [...current, ...incoming])
+  }
+  const uploadProjectFile = (projectId: number, file: File, drawingNo: string, index: number, total: number) => new Promise<void>((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('drawing_no', drawingNo)
+    form.append('title', file.name.replace(/\.[^.]+$/, ''))
+    form.append('category', projectFileCategory)
+    form.append('revision', projectFileRevision.trim())
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api/projects/${projectId}/drawings`)
+    xhr.withCredentials = true
+    const token = localStorage.getItem('revoxen_token')
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) setProjectUploadProgress(Math.round((index + event.loaded / event.total) / total * 100))
+    }
+    xhr.onload = () => {
+      const result = JSON.parse(xhr.responseText || '{}') as { error?: string }
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new Error(result.error || `Upload failed (${xhr.status}).`))
+    }
+    xhr.onerror = () => reject(new Error(`Upload failed for ${file.name}.`))
+    xhr.send(form)
+  })
+  const uploadProjectFiles = async (projectId: number) => {
+    setProjectUploadProgress(0)
+    let uploaded = 0
+    let uploadError = ''
+    for (let index = 0; index < projectFiles.length; index += 1) {
+      const file = projectFiles[index]
+      const base = file.name.replace(/\.[^.]+$/, '').toUpperCase().replace(/[^A-Z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 36) || `DRAWING-${index + 1}`
+      const drawingNo = projectFiles.length > 1 ? `${base}-${String(index + 1).padStart(2, '0')}` : base
+      try {
+        await uploadProjectFile(projectId, file, drawingNo, index, projectFiles.length)
+        uploaded += 1
+      } catch (problem) {
+        uploadError = problem instanceof Error ? problem.message : 'Drawing upload failed.'
+        break
+      }
+    }
+    return { uploaded, uploadError }
+  }
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSaving(true)
@@ -1093,11 +1185,17 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
           await onSaved('Employee loan record updated.')
         } else {
           const route = apiRoute(target as EntryModule)
-          await api(`/${route}/${selectedId}`, {
+          const payload = modulePayload(target as EntryModule, values, documentModule ? lines : undefined)
+          if (target === 'estimates') payload.drawing_ids = selectedDrawingIds
+          const updated = await api<Entry>(`/${route}/${selectedId}`, {
             method: 'PUT',
-            body: JSON.stringify(modulePayload(target as EntryModule, values, documentModule ? lines : undefined)),
+            body: JSON.stringify(payload),
           })
-          await onSaved(`${labels[target as EntryModule]?.title.replace(/s$/, '') || 'Record'} updated successfully.`)
+          if (isProject && projectFiles.length) {
+            const uploaded = await uploadProjectFiles(Number(updated.id))
+            setProjectFiles([])
+            await onSaved(uploaded.uploadError ? `Project updated; ${uploaded.uploaded} of ${projectFiles.length} drawings uploaded. Open the project profile to finish.` : 'Project updated and drawings uploaded.')
+          } else await onSaved(`${labels[target as EntryModule]?.title.replace(/s$/, '') || 'Record'} updated successfully.`)
         }
       } else if (target === 'payroll') {
         await api('/payroll', { method: 'POST', body: JSON.stringify({ ...values, employee_id: Number(values.employee_id), overtime_hours: Number(values.overtime_hours || 0), loan_deduction: Number(values.loan_deduction || 0), other_deduction: Number(values.other_deduction || 0) }) })
@@ -1116,8 +1214,15 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
         await api(paymentPath, { method: 'POST', body: JSON.stringify({ ...values, amount: Number(values.amount) }) })
         await onSaved('Payment recorded in the transaction ledger.')
       } else {
-        const result = await api(`/` + apiRoute(target as EntryModule), { method: 'POST', body: JSON.stringify(modulePayload(target as EntryModule, values, documentModule ? lines : undefined)) })
+        const payload = modulePayload(target as EntryModule, values, documentModule ? lines : undefined)
+        if (target === 'estimates') payload.drawing_ids = selectedDrawingIds
+        const result = await api(`/` + apiRoute(target as EntryModule), { method: 'POST', body: JSON.stringify(payload) })
         if (target === 'estimates' && result && typeof result === 'object' && 'document_number' in result) await onSaved('Detailed estimate saved.')
+        else if (isProject && projectFiles.length && result && typeof result === 'object' && 'id' in result) {
+          const uploaded = await uploadProjectFiles(Number(result.id))
+          setProjectFiles([])
+          await onSaved(uploaded.uploadError ? `Project created; ${uploaded.uploaded} of ${projectFiles.length} drawings uploaded. Open the project profile to finish.` : 'Project created and drawings uploaded.')
+        }
         else await onSaved(`${labels[target as EntryModule]?.title.replace(/s$/, '') || 'Record'} saved to SQLite.`)
       }
     } catch (problem) { setError(message(problem)); setSaving(false) }
@@ -1160,6 +1265,8 @@ function EntryDialog({ target, selectedId, data, onClose, onSaved }: { target: E
               <FormField key={field.key} field={field} value={values[field.key] ?? ''} onChange={(value) => setField(field.key, value)} />
             ))}
           </div>
+          {isProject && <section className="ops-project-drawing-queue"><div className="ops-line-items-head"><div><span className="ops-section-label">PROJECT FILES</span><h3>Drawings &amp; engineering files</h3></div><span className="ops-action-chip">Optional</span></div><p>Create the project without files or attach drawings now. Original files stay private and revisions are retained.</p><label className="ops-project-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addProjectFiles(event.dataTransfer.files) }}><input type="file" multiple accept=".pdf,.dwg,.dxf,.jpg,.jpeg,.png,.tif,.tiff,.ifc,.zip,.rvt" onChange={(event) => event.target.files && addProjectFiles(event.target.files)} /><UploadCloud size={18} /><strong>Drop files here or browse</strong><small>PDF, DWG, DXF, JPG, PNG, TIFF, IFC, ZIP · up to 100 MB each</small></label><div className="ops-form-grid ops-project-drawing-metadata"><label className="ops-field"><span>Drawing category</span><select value={projectFileCategory} onChange={(event) => setProjectFileCategory(event.target.value)}>{['Architectural','Structural','Foundation','Civil','Electrical','Plumbing','HVAC','Mechanical','Floor Plan','Elevation','Section','Site Plan','Roof Plan','Shop Drawing','As-Built','Reinforcement','Detail','Other'].map((category) => <option key={category}>{category}</option>)}</select></label><label className="ops-field"><span>Revision</span><input value={projectFileRevision} onChange={(event) => setProjectFileRevision(event.target.value)} /></label></div>{Boolean(projectFiles.length) && <div className="ops-project-file-list">{projectFiles.map((file, index) => <div key={`${file.name}-${index}`}><FileCode2 size={14} /><span>{file.name}</span><small>{(file.size / 1024 / 1024).toFixed(1)} MB</small><button type="button" className="ops-icon-button" disabled={saving} onClick={() => setProjectFiles((current) => current.filter((_, position) => position !== index))} aria-label={`Remove ${file.name}`}><X size={14} /></button></div>)}{saving && <progress max="100" value={projectUploadProgress} />}</div>}</section>}
+          {target === 'estimates' && <section className="ops-estimate-drawing-links"><div className="ops-line-items-head"><div><span className="ops-section-label">SOURCE DOCUMENTS</span><h3>Project drawing revisions</h3></div><span className="ops-action-chip">Optional</span></div>{!values.project_id ? <p>Select a project to load only that project's drawing revisions.</p> : drawingLoadError ? <div className="ops-error">{drawingLoadError}</div> : estimateDrawings.length ? <div className="ops-estimate-drawing-list">{estimateDrawings.map((drawing) => { const drawingId = Number(drawing.id); const checked = selectedDrawingIds.includes(drawingId); return <label key={drawingId}><input type="checkbox" checked={checked} onChange={(event) => setSelectedDrawingIds((current) => event.target.checked ? [...current, drawingId] : current.filter((id) => id !== drawingId))} /><span><strong>{String(drawing.drawing_no)} · Rev {String(drawing.revision)}</strong><small>{String(drawing.title)} · {String(drawing.category)} · {String(drawing.status)}</small></span></label> })}</div> : <p>No drawings are registered for this project yet. The estimate can still be saved without drawing links.</p>}</section>}
           {documentModule && (
             <>
               <div className="ops-line-items-head">
