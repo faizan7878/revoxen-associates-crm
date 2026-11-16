@@ -7,7 +7,7 @@ import {
 import './executive-dashboard.css'
 
 type ModuleId =
-  | 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'engineering'
+  | 'dashboard' | 'leads' | 'projects' | 'engineering'
   | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders'
   | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss' | 'users'
 

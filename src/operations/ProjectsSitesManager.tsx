@@ -134,14 +134,12 @@ interface ProjectsSitesManagerProps {
   projects: Record<string, unknown>[]
   expenses: Record<string, unknown>[]
   subcontractOrders: Record<string, unknown>[]
-  canOpenProjectAccounts: boolean
   onCreateProject: () => void
   onEditProject: (id: number) => void
-  onOpenProjectAccount: (projectCode: string) => void
   onNotify: (message: string) => void
 }
 
-export default function ProjectsSitesManager({ projects, expenses, subcontractOrders, search = '', canEdit = true, canOpenProjectAccounts, onCreateProject, onEditProject, onOpenProjectAccount, onNotify }: ProjectsSitesManagerProps) {
+export default function ProjectsSitesManager({ projects, expenses, subcontractOrders, search = '', canEdit = true, onCreateProject, onEditProject, onNotify }: ProjectsSitesManagerProps) {
   // Navigation
   const [activeTab, setActiveTab] = useState<ProjectSiteTab>('portfolio')
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
@@ -355,10 +353,8 @@ export default function ProjectsSitesManager({ projects, expenses, subcontractOr
     key={selectedProjectId}
     projectId={selectedProjectId}
     canEdit={canEdit}
-    canOpenAccounts={canOpenProjectAccounts}
     onBack={() => setSelectedProjectId(null)}
     onEdit={onEditProject}
-    onOpenAccount={onOpenProjectAccount}
     onNotify={onNotify}
   />
 

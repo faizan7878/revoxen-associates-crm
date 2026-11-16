@@ -9,14 +9,13 @@ import {
 import AuthScreen from './AuthScreen'
 import LeadSourceTracking from './LeadSourceTracking'
 import ProjectsSitesManager from './ProjectsSitesManager'
-import ProjectAccount from './ProjectAccount'
 import UserManagement from './UserManagement'
 import EngineeringDesk from './EngineeringDesk'
 import ExecutiveDashboard from './ExecutiveDashboard'
 import './operations.css'
 
-type ModuleId = 'dashboard' | 'leads' | 'projects' | 'projectAccounts' | 'engineering' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss' | 'users'
-type EntryModule = Exclude<ModuleId, 'dashboard' | 'projectAccounts' | 'engineering' | 'payroll' | 'loans' | 'profitLoss' | 'users'>
+type ModuleId = 'dashboard' | 'leads' | 'projects' | 'engineering' | 'employees' | 'payroll' | 'loans' | 'assets' | 'vendors' | 'workOrders' | 'projectExpenses' | 'officeExpenses' | 'estimates' | 'invoices' | 'profitLoss' | 'users'
+type EntryModule = Exclude<ModuleId, 'dashboard' | 'engineering' | 'payroll' | 'loans' | 'profitLoss' | 'users'>
 type AuthUser = { id: number; name: string; email: string; role: 'admin' | 'user'; permissions: Partial<Record<Exclude<ModuleId, 'users'>, { view: boolean; edit: boolean }>> }
 type Entry = Record<string, unknown>
 type Bootstrap = { projects: Entry[]; engineeringProjects: Entry[]; leads: Entry[]; employees: Entry[]; employeeLoans: Entry[]; payroll: Entry[]; assets: Entry[]; assetMaintenance: Entry[]; vendors: Entry[]; workOrders: Entry[]; expenses: Entry[]; documents: Entry[] }
@@ -25,7 +24,7 @@ type Field = { key: string; label: string; required?: boolean; kind?: 'text' | '
 type LineItem = { item: string; description: string; length: string; width: string; height: string; quantity: string; nos: string; unit: string; rate: string; taxRate: string }
 
 const navGroups: { title: string; links: { id: ModuleId; label: string; icon: LucideIcon }[] }[] = [
-  { title: 'WORKSPACE', links: [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'leads', label: 'Leads & Pipeline', icon: Sparkles }, { id: 'projects', label: 'Projects', icon: BriefcaseBusiness }, { id: 'projectAccounts', label: 'Project accounts', icon: Briefcase }, { id: 'engineering', label: 'Engineering', icon: Compass }] },
+  { title: 'WORKSPACE', links: [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, { id: 'leads', label: 'Leads & Pipeline', icon: Sparkles }, { id: 'projects', label: 'Projects', icon: BriefcaseBusiness }, { id: 'engineering', label: 'Engineering', icon: Compass }] },
   { title: 'PEOPLE', links: [{ id: 'employees', label: 'Employees', icon: UsersRound }, { id: 'payroll', label: 'Payroll', icon: Banknote }, { id: 'loans', label: 'Employee loans', icon: Wallet }] },
   { title: 'OPERATIONS', links: [{ id: 'assets', label: 'Company assets', icon: Package }, { id: 'vendors', label: 'Vendors', icon: HardHat }, { id: 'workOrders', label: 'Sublet work orders', icon: ClipboardList }] },
   { title: 'ACCOUNTING', links: [{ id: 'projectExpenses', label: 'Project expenses', icon: Wrench }, { id: 'officeExpenses', label: 'Office & general', icon: Receipt }, { id: 'estimates', label: 'Estimates', icon: FileText }, { id: 'invoices', label: 'Invoices', icon: FileSpreadsheet }, { id: 'profitLoss', label: 'Profit & loss', icon: Activity }] },
@@ -36,7 +35,6 @@ const labels: Record<ModuleId, { title: string; subtitle: string; add?: string }
   dashboard: { title: 'Executive Overview', subtitle: 'Company-wide performance analytics and executive financial summary.' },
   leads: { title: 'Lead & Opportunity register', subtitle: 'Channel sources, qualified opportunities, site visits, and proposal stages.', add: 'New lead' },
   projects: { title: 'Projects', subtitle: 'Contract records, project ownership, client, status, and delivery dates.', add: 'New project' },
-  projectAccounts: { title: 'Project accounts', subtitle: 'Budgets, audited approvals, committed costs, payments, and client receipts by project.' },
   engineering: { title: 'Engineering & Technical Desk', subtitle: 'BOQ & estimates, structural material calculator, and BIM & CAD drawings archive.' },
   employees: { title: 'Employee register', subtitle: 'Employment details, monthly compensation package, tax, benefits, and loan balance.', add: 'Add employee' },
   payroll: { title: 'Payroll register', subtitle: 'Monthly gross, overtime, deductions, employer cost, and take-home pay.', add: 'Run payroll' },
@@ -221,7 +219,6 @@ function OperationsApp() {
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
-  const [projectAccountReference, setProjectAccountReference] = useState('')
 
   useEffect(() => {
     let active = true
@@ -374,13 +371,12 @@ function OperationsApp() {
         {loading && <div className="ops-loading"><span className="ops-spinner" />Loading company records…</div>}
         {!loading && module === 'dashboard' && <Dashboard data={companyData} finance={finance} onNavigate={changeModule} period={period} setPeriod={setPeriod} canView={canView} canEdit={canEdit} />}
         {!loading && module === 'leads' && <LeadSourceTracking onNavigate={changeModule} leadsData={companyData.leads} canEdit={canEdit('leads')} />}
-        {!loading && module === 'projects' && <ProjectsSitesManager search={search} canEdit={canEdit('projects')} projects={companyData.projects} expenses={companyData.expenses} subcontractOrders={companyData.workOrders} canOpenProjectAccounts={canView('projectAccounts')} onCreateProject={() => openDialog('projects')} onEditProject={(id) => openDialog('projects', id)} onOpenProjectAccount={(projectCode) => { setProjectAccountReference(projectCode); changeModule('projectAccounts') }} onNotify={notify} />}
+        {!loading && module === 'projects' && <ProjectsSitesManager search={search} canEdit={canEdit('projects')} projects={companyData.projects} expenses={companyData.expenses} subcontractOrders={companyData.workOrders} onCreateProject={() => openDialog('projects')} onEditProject={(id) => openDialog('projects', id)} onNotify={notify} />}
         {!loading && module === 'engineering' && <EngineeringDesk projects={canView('projects') ? companyData.projects : companyData.engineeringProjects} canEdit={canEdit('engineering')} />}
         {!loading && module === 'profitLoss' && <ProfitLoss finance={finance} period={period} setPeriod={setPeriod} year={year} setYear={setYear} periodMode={periodMode} setPeriodMode={setPeriodMode} />}
         {!loading && (module === 'projectExpenses' || module === 'officeExpenses') && <ExpenseControlSummary kind={module === 'projectExpenses' ? 'Project' : 'General'} expenses={companyData.expenses} />}
         {!loading && module === 'users' && user.role === 'admin' && <UserManagement />}
-        {!loading && module === 'projectAccounts' && <ProjectAccount initialReference={projectAccountReference} canEdit={canEdit('projectAccounts')} canEditExpenses={canEdit('projectExpenses')} canAudit={user.role === 'admin'} onNotify={notify} />}
-        {!loading && !['dashboard', 'leads', 'projects', 'projectAccounts', 'engineering', 'profitLoss', 'users'].includes(module) && <ModuleTable
+        {!loading && !['dashboard', 'leads', 'projects', 'engineering', 'profitLoss', 'users'].includes(module) && <ModuleTable
           module={module}
           data={companyData}
           search={search}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
-import { ArrowLeft, ArrowUpRight, Check, Download, FileCode2, FileImage, FileText, FolderOpen, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, FileCode2, FileImage, FileText, FolderOpen, Plus, RefreshCw, ShieldCheck, Trash2, UploadCloud, X } from 'lucide-react'
 import './project-profile.css'
 
 type Row = Record<string, unknown>
@@ -20,13 +20,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return result
 }
 
-export default function ProjectProfile({ projectId, canEdit, canOpenAccounts, onBack, onEdit, onOpenAccount, onNotify }: {
+export default function ProjectProfile({ projectId, canEdit, onBack, onEdit, onNotify }: {
   projectId: number
   canEdit: boolean
-  canOpenAccounts: boolean
   onBack: () => void
   onEdit: (id: number) => void
-  onOpenAccount: (projectCode: string) => void
   onNotify: (message: string) => void
 }) {
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -146,7 +144,7 @@ export default function ProjectProfile({ projectId, canEdit, canOpenAccounts, on
   const project = profile.project
   const documents = profile.documents
   return <div className="project-profile">
-    <div className="project-profile-toolbar"><button className="ops-outline-button" onClick={onBack}><ArrowLeft size={14} />Portfolio</button><div className="project-profile-actions"><button className="ops-outline-button" onClick={() => void loadProfile()} aria-label="Refresh project profile"><RefreshCw size={14} />Refresh</button>{canOpenAccounts && <button className="ops-outline-button" onClick={() => onOpenAccount(String(project.project_code))}><ArrowUpRight size={14} />Project account</button>}{canEdit && <button className="ops-red-button" onClick={() => onEdit(projectId)}>Edit project</button>}</div></div>
+    <div className="project-profile-toolbar"><button className="ops-outline-button" onClick={onBack}><ArrowLeft size={14} />Portfolio</button><div className="project-profile-actions"><button className="ops-outline-button" onClick={() => void loadProfile()} aria-label="Refresh project profile"><RefreshCw size={14} />Refresh</button>{canEdit && <button className="ops-red-button" onClick={() => onEdit(projectId)}>Edit project</button>}</div></div>
     {error && <div className="ops-error"><span>{error}</span><button onClick={() => setError('')}>Dismiss</button></div>}
     <section className="ops-panel project-profile-hero"><div className="project-profile-identity"><span className="ops-section-label">{text(project.project_code)} · PROJECT #{text(project.id)}</span><h2>{text(project.name)}</h2><p>{text(project.client)} · {text(project.work_type)} · {text(project.site_address)}</p></div><div className="project-profile-status"><span className={`ops-status ops-status-${String(project.status || '').toLowerCase().replaceAll(/[^a-z]+/g, '-')}`}><i />{text(project.status)}</span><span className="ops-status">{text(project.priority)} priority</span></div></section>
     <section className="ops-metric-grid project-profile-metrics">{[
