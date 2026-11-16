@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import {
-  Activity, ArrowRight, ArrowUpRight, ArrowDownRight, BriefcaseBusiness,
-  Building2, CalendarDays, CheckSquare, CircleDollarSign, Moon, PieChart,
-  Receipt, Sun, TrendingUp, Users, Wallet, Wrench, ShieldCheck
+  Activity, ArrowRight, BriefcaseBusiness,
+  CalendarDays, CheckSquare, CircleDollarSign, Moon, PieChart,
+  Receipt, Sun, TrendingUp, Users, ShieldCheck
 } from 'lucide-react'
 import './executive-dashboard.css'
 
@@ -206,29 +206,11 @@ export default function ExecutiveDashboard({
     }))
   }, [data.employees])
 
-  // 4. Financial Performance monthly columns (real data baseline)
-  const monthlyFinancials = useMemo(() => {
-    const months = ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct']
-    const revMax = Math.max(revenue, 1)
-    const expMax = Math.max(expenses, 1)
-    const maxVal = Math.max(revMax, expMax)
-
-    const factors = [
-      { rev: 0.65, exp: 0.72 },
-      { rev: 0.82, exp: 0.78 },
-      { rev: 0.74, exp: 0.68 },
-      { rev: 0.91, exp: 0.85 },
-      { rev: 0.88, exp: 0.80 },
-      { rev: 1.00, exp: (expenses / maxVal) || 0.88 },
-    ]
-
-    return months.map((m, idx) => {
-      const f = factors[idx]
-      const revH = Math.min(100, Math.max(12, Math.round((revenue > 0 ? (f.rev * revenue) / maxVal : f.rev) * 100)))
-      const expH = Math.min(100, Math.max(10, Math.round((expenses > 0 ? (f.exp * expenses) / maxVal : f.exp) * 100)))
-      return { month: m, revHeight: `${revH}%`, expHeight: `${expH}%` }
-    })
-  }, [revenue, expenses])
+  const periodComparison = [
+    { label: 'Invoiced revenue', value: revenue, tone: 'revenue' },
+    { label: 'Operating expenses', value: expenses, tone: 'expenses' },
+  ]
+  const periodComparisonMax = Math.max(revenue, expenses, 1)
 
   if (
     !canView('dashboard') && !canView('leads') && !canView('projects') &&
@@ -248,7 +230,15 @@ export default function ExecutiveDashboard({
 
   return (
     <div className={`rx-exec-dashboard ${theme === 'dark' ? 'rx-theme-dark' : 'rx-theme-light'}`}>
-      {/* Dashboard Top Control Bar */}
+      <header className="rx-exec-heading">
+        <div>
+          <span className="rx-exec-eyebrow"><span /> REVOXEN ASSOCIATES · EXECUTIVE BRIEFING</span>
+          <h2>Executive overview</h2>
+          <p>Project delivery and financial position for the selected reporting period.</p>
+        </div>
+        <span className="rx-exec-period-mark">{period}</span>
+      </header>
+
       <div className="rx-toolbar">
         <div className="rx-toolbar-left">
           <span className="rx-badge-live">
@@ -299,7 +289,7 @@ export default function ExecutiveDashboard({
       {/* 6 Professional Executive KPI Cards */}
       <section className="rx-kpi-grid">
         {/* KPI 1: Total Projects */}
-        <article className="rx-kpi-card" onClick={() => onNavigate('projects')} style={{ cursor: 'pointer' }}>
+        <article className="rx-kpi-card kpi-projects" onClick={() => onNavigate('projects')}>
           <div className="rx-kpi-head">
             <span className="rx-kpi-label">TOTAL PROJECTS</span>
             <div className="rx-kpi-icon-wrap icon-blue">
@@ -308,13 +298,14 @@ export default function ExecutiveDashboard({
           </div>
           <div className="rx-kpi-value">{totalProjects}</div>
           <div className="rx-kpi-sub">
-            <span className="rx-kpi-trend trend-neutral">{completedProjects} completed</span>
-            <span>· {planningProjects} planning</span>
+            <span>{completedProjects} completed</span>
+            <span>{planningProjects} planning</span>
           </div>
+          <div className="rx-kpi-progress"><span style={{ width: `${totalProjects ? Math.round(completedProjects / totalProjects * 100) : 0}%` }} /></div>
         </article>
 
         {/* KPI 2: Active Projects */}
-        <article className="rx-kpi-card" onClick={() => onNavigate('projects')} style={{ cursor: 'pointer' }}>
+        <article className="rx-kpi-card kpi-active" onClick={() => onNavigate('projects')}>
           <div className="rx-kpi-head">
             <span className="rx-kpi-label">ACTIVE PROJECTS</span>
             <div className="rx-kpi-icon-wrap icon-cyan">
@@ -323,13 +314,14 @@ export default function ExecutiveDashboard({
           </div>
           <div className="rx-kpi-value">{activeProjects}</div>
           <div className="rx-kpi-sub">
-            <span className="rx-kpi-trend trend-positive">{inProgressProjects} in progress</span>
-            {atRiskProjects > 0 && <span style={{ color: '#ef4444' }}>· {atRiskProjects} at risk</span>}
+            <span>{inProgressProjects} in progress</span>
+            {atRiskProjects > 0 && <span className="rx-kpi-alert">{atRiskProjects} at risk</span>}
           </div>
+          <div className="rx-kpi-progress"><span style={{ width: `${totalProjects ? Math.round(activeProjects / totalProjects * 100) : 0}%` }} /></div>
         </article>
 
         {/* KPI 3: Revenue */}
-        <article className="rx-kpi-card" onClick={() => onNavigate('invoices')} style={{ cursor: 'pointer' }}>
+        <article className="rx-kpi-card kpi-revenue" onClick={() => onNavigate('invoices')}>
           <div className="rx-kpi-head">
             <span className="rx-kpi-label">REVENUE</span>
             <div className="rx-kpi-icon-wrap icon-emerald">
@@ -338,15 +330,14 @@ export default function ExecutiveDashboard({
           </div>
           <div className="rx-kpi-value">{pkr(revenue)}</div>
           <div className="rx-kpi-sub">
-            <span className="rx-kpi-trend trend-positive">
-              {revenue > 0 ? `${Math.round((cashCollected / revenue) * 100)}%` : '0%'} cash in
-            </span>
             <span>{pkr(cashCollected)} collected</span>
+            <span>{revenue > 0 ? `${Math.round((cashCollected / revenue) * 100)}%` : '0%'} received</span>
           </div>
+          <div className="rx-kpi-progress"><span style={{ width: `${revenue > 0 ? Math.min(100, Math.round(cashCollected / revenue * 100)) : 0}%` }} /></div>
         </article>
 
         {/* KPI 4: Expenses */}
-        <article className="rx-kpi-card" onClick={() => onNavigate('projectExpenses')} style={{ cursor: 'pointer' }}>
+        <article className="rx-kpi-card kpi-expenses" onClick={() => onNavigate('projectExpenses')}>
           <div className="rx-kpi-head">
             <span className="rx-kpi-label">EXPENSES</span>
             <div className="rx-kpi-icon-wrap icon-rose">
@@ -355,36 +346,29 @@ export default function ExecutiveDashboard({
           </div>
           <div className="rx-kpi-value">{pkr(expenses)}</div>
           <div className="rx-kpi-sub">
-            <span className="rx-kpi-trend trend-neutral">Operating costs</span>
+            <span>Operating costs</span>
             <span>Site &amp; overhead</span>
           </div>
         </article>
 
         {/* KPI 5: Net Profit */}
-        <article className="rx-kpi-card" onClick={() => onNavigate('profitLoss')} style={{ cursor: 'pointer' }}>
+        <article className={`rx-kpi-card kpi-profit ${isProfitable ? 'is-positive' : 'is-negative'}`} onClick={() => onNavigate('profitLoss')}>
           <div className="rx-kpi-head">
             <span className="rx-kpi-label">NET PROFIT</span>
             <div className="rx-kpi-icon-wrap icon-amber">
               <TrendingUp size={16} />
             </div>
           </div>
-          <div
-            className="rx-kpi-value"
-            style={{ color: isProfitable ? (theme === 'dark' ? '#34d399' : '#059669') : '#ef4444' }}
-          >
-            {pkr(netProfit)}
-          </div>
+          <div className="rx-kpi-value">{pkr(netProfit)}</div>
           <div className="rx-kpi-sub">
-            <span className={`rx-kpi-trend ${isProfitable ? 'trend-positive' : 'trend-negative'}`}>
-              {isProfitable ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-              {marginPct}% margin
-            </span>
             <span>{isProfitable ? 'Net surplus' : 'Operating deficit'}</span>
+            <span>{marginPct}% margin</span>
           </div>
+          <div className="rx-kpi-progress"><span style={{ width: `${Math.min(100, Math.max(0, Math.abs(marginPct)))}%` }} /></div>
         </article>
 
         {/* KPI 6: Pending Tasks */}
-        <article className="rx-kpi-card">
+        <article className="rx-kpi-card kpi-pending">
           <div className="rx-kpi-head">
             <span className="rx-kpi-label">PENDING TASKS</span>
             <div className="rx-kpi-icon-wrap icon-purple">
@@ -432,27 +416,17 @@ export default function ExecutiveDashboard({
           </div>
 
           <div className="rx-finance-chart-container">
-            <div className="rx-bars-group">
-              {monthlyFinancials.map((col, idx) => (
-                <div key={idx} className="rx-month-col">
-                  <div className="rx-dual-bars">
-                    <div className="rx-bar-rev" style={{ height: col.revHeight }} title="Revenue" />
-                    <div className="rx-bar-exp" style={{ height: col.expHeight }} title="Expenses" />
-                  </div>
-                  <span className="rx-month-label">{col.month}</span>
+            <div className="rx-period-bars" role="img" aria-label={`${pkr(revenue)} invoiced revenue and ${pkr(expenses)} operating expenses for ${period}`}>
+              {periodComparison.map((item) => (
+                <div className="rx-period-bar-item" key={item.label} title={`${item.label}: ${pkr(item.value)}`}>
+                  <div className="rx-period-bar-heading"><span>{item.label}</span><strong>{pkr(item.value)}</strong></div>
+                  <div className="rx-period-bar-track"><span className={`rx-period-bar-fill ${item.tone}`} style={{ width: `${Math.max(1, Math.round(item.value / periodComparisonMax * 100))}%` }} /></div>
                 </div>
               ))}
             </div>
-
             <div className="rx-finance-legend">
-              <div className="rx-legend-item">
-                <span className="rx-legend-dot" style={{ background: '#10b981' }} />
-                <span>Invoiced Revenue</span>
-              </div>
-              <div className="rx-legend-item">
-                <span className="rx-legend-dot" style={{ background: '#ed666e' }} />
-                <span>Operating Expenses</span>
-              </div>
+              <div className="rx-legend-item"><span className="rx-legend-dot" style={{ background: '#34d399' }} /><span>Invoiced revenue · {period}</span></div>
+              <div className="rx-legend-item"><span className="rx-legend-dot" style={{ background: '#fb7185' }} /><span>Operating expenses · {period}</span></div>
             </div>
           </div>
         </div>
