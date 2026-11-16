@@ -1,10 +1,11 @@
 import { useState, useMemo, type FormEvent } from 'react'
 import {
   BriefcaseBusiness, HardHat, FileText, CheckSquare,
-  Calculator, ShieldAlert, Award, ArrowRightLeft, Plus,
+  Calculator, ShieldAlert, Award, ArrowRightLeft, Plus, UsersRound, FileCode2,
   Check, AlertTriangle, AlertCircle, RefreshCw, XCircle, X
 } from 'lucide-react'
 import ProjectProfile from './ProjectProfile'
+import ProjectDrawingsRegister from './ProjectDrawingsRegister'
 import './lead-tracking.css'
 
 // ============================================================================
@@ -13,6 +14,8 @@ import './lead-tracking.css'
 
 export type ProjectSiteTab =
   | 'portfolio'  // 1. Projects Portfolio
+  | 'profiles'   // 8. Project Profiles
+  | 'drawings'   // 9. Drawing & Engineering Documents
   | 'site'       // 2. Site Management
   | 'dpr'        // 3. Daily Progress Reports (DPR)
   | 'tasks'      // 4. Tasks & Work Orders
@@ -444,8 +447,23 @@ export default function ProjectsSitesManager({ projects, expenses, subcontractOr
               {isHandoverEligible ? 'Ready' : 'Pending'}
             </span>
           </button>
+
+          <button type="button" className={`lst-subnav-tab ${activeTab === 'profiles' ? 'active' : ''}`} onClick={() => setActiveTab('profiles')}>
+            <UsersRound size={14} />
+            <span>8. Project Profiles</span>
+            <span className="lst-tab-badge">{projectsArray.length}</span>
+          </button>
+
+          <button type="button" className={`lst-subnav-tab ${activeTab === 'drawings' ? 'active' : ''}`} onClick={() => setActiveTab('drawings')}>
+            <FileCode2 size={14} />
+            <span>9. Drawings &amp; Engineering Documents</span>
+          </button>
         </div>
       </nav>
+
+      {activeTab === 'profiles' && <section className="lst-card project-profile-list"><div className="lst-card-head"><div><h2 className="lst-card-title"><UsersRound size={18} />Project Profiles ({filteredProjects.length})</h2><span className="lst-card-sub">Open the database-backed project profile, edit details, view site reports and linked drawings.</span></div>{canEdit && <button type="button" className="lst-btn-primary" onClick={onCreateProject}><Plus size={14} />New project</button>}</div><div className="lst-table-wrapper"><table className="lst-table"><thead><tr><th>PROJECT CODE</th><th>PROJECT</th><th>CLIENT</th><th>MANAGER</th><th>STATUS</th><th>CONTRACT</th><th /></tr></thead><tbody>{filteredProjects.map((project) => { const record = projects.find((item) => Number(item.id) === Number(project.id)); return <tr key={project.id}><td><span className="lst-tender-id">{project.projectCode}</span><small>#{project.id}</small></td><td><strong>{project.name}</strong></td><td>{project.client}</td><td>{String(record?.manager || '—')}</td><td><span className={`lst-badge ${project.status === 'Completed' ? 'lst-badge-success' : project.status === 'Delayed' || project.status === 'At risk' ? 'lst-badge-danger' : 'lst-badge-info'}`}>{project.status}</span></td><td>{fmtPKR(project.budget)}</td><td><div className="lst-row-actions"><button type="button" onClick={() => setSelectedProjectId(Number(project.id))}>Open profile</button>{canEdit && <button type="button" onClick={() => onEditProject(Number(project.id))}>Edit</button>}</div></td></tr> })}{!filteredProjects.length && <tr><td colSpan={7}><div className="project-register-empty">No project records match the current search.</div></td></tr>}</tbody></table></div></section>}
+
+      {activeTab === 'drawings' && <ProjectDrawingsRegister projects={projects.map((project) => ({ id: Number(project.id), project_code: String(project.project_code || ''), name: String(project.name || '') }))} search={search} onOpenProject={(id) => { setSelectedProjectId(id); setActiveTab('profiles') }} />}
 
       {/* ================================================================== */}
       {/* SUB-MODULE 1: Projects Portfolio                                   */}
